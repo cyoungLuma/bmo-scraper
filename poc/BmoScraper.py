@@ -32,7 +32,7 @@ class BmoScraper:
 
 # %% Set of URLs
 bmo_urls = {
-    'https://www.bmonotes.com/Note/JHN4163',
+    'https://www.bmonotes.com/Note/JHN7482',
     'https://www.bmonotes.com/Note/JHN15954'
 }
 
@@ -42,4 +42,4 @@ bmo.transpose_set_header()
 bmo.label_note_tables()
 
 # %% Example
-bmo.notes_dict['JHN4163']['Product Details']
+bmo.notes_dict['JHN7482']['Product Details']
