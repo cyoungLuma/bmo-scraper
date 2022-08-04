@@ -41,5 +41,12 @@ bmo = BmoScraper(bmo_urls)
 bmo.transpose_set_header()
 bmo.label_note_tables()
 
-# %% Example
-bmo.notes_dict['JHN7482']['Product Details']
+# %% Get rules for each
+pdw_df = {
+    'JHN7482':
+    bmo.bmo_example_fields.loc[~bmo.bmo_example_fields['JHN7482'].isna(),
+                               ['PDW Fields', 'JHN7482']],
+    'JHN15954':
+    bmo.bmo_example_fields.loc[~bmo.bmo_example_fields['JHN15954'].isna(),
+                               ['PDW Fields', 'JHN15954']],
+}
