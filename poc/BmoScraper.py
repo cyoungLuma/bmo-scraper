@@ -119,6 +119,29 @@ class BmoScraper:
                 dt_days = dt_diff.mean().days
                 check_call_freq(self, dt_days)
 
+    # Rule: callType
+    def _callType(self):
+        # Check if right type of note
+        for key, val in self.notes_dict.items():
+            if 'Payment Schedule' in val.keys():
+                # Check if all values are the same
+                autocall_series = self.notes_dict[key]['Payment Schedule'][
+                    'Autocall Level'].dropna().reset_index(drop=True)
+                if (autocall_series == autocall_series[0]).all():
+                    self.pdw_df.at['productCall.callType', key] = 'Autocall'
+                else:
+                    self.pdw_df.at['productCall.callType', key] = 'Auto Step'
+
+    def _numberNoCallPeriods(self):
+        # Check if right type of note
+        for key, val in self.notes_dict.items():
+            if 'Payment Schedule' in val.keys():
+                # Filter to NaN + 1
+                self.pdw_df.at['productCall.numberNoCallPeriods', key] = len(
+                    self.notes_dict[key]['Payment Schedule'].loc[
+                        self.notes_dict[key]['Payment Schedule']
+                        ['Autocall Level'].isna()]) + 1
+
 
 # %% Set of URLs
 bmo_urls = [
@@ -135,6 +158,8 @@ bmo._PDW_Name()
 bmo._callBarrierLevelFinal()
 bmo._callObservationDateList()
 bmo._callObservationFrequency()
+bmo._callType()
+bmo._numberNoCallPeriods()
 
 # %% Final results
 bmo.pdw_df
