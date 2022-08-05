@@ -1,6 +1,8 @@
 # %% Libs
 import pandas as pd
 
+pd.set_option('display.max_rows', 200)
+
 
 # %% Read in the examples
 class BmoScraper:
@@ -11,15 +13,27 @@ class BmoScraper:
             for note in bmo_urls
         }
         self.bmo_example_fields = pd.read_excel('BMO Examples.xlsx')
+        self.pdw_df = self.bmo_example_fields[['PDW Fields']].copy()
+        self.skip_cols = pd.Series(['Payment Schedule', 'Portfolio Summary'])
 
     # Get all scraping results as a single row table
     def transpose_set_header(self):
+
+        # Additional fxn to recycle code
+        def reassign_cols_truncate(self, key, i):
+            self.notes_dict[key][i].columns = self.notes_dict[key][i].iloc[0]
+            self.notes_dict[key][i] = self.notes_dict[key][i][1:]
+
+        # This checks if the scrape results are a true table or not
         for key, val in self.notes_dict.items():
             for i in range(len(val)):
-                self.notes_dict[key][i] = self.notes_dict[key][i].T
-                self.notes_dict[key][i].columns = self.notes_dict[key][i].iloc[
-                    0]
-                self.notes_dict[key][i] = self.notes_dict[key][i][1:]
+                if ~bmo.skip_cols.isin(bmo.notes_dict[key][i].columns).any():
+                    self.notes_dict[key][i] = self.notes_dict[key][i].T
+                    reassign_cols_truncate(self, key, i)
+                else:
+                    table_name = self.notes_dict[key][i].columns[0]
+                    reassign_cols_truncate(self, key, i)
+                    self.notes_dict[key][i].columns.name = table_name
 
     # Convert all to dict to navigate indices
     def label_note_tables(self):
@@ -29,24 +43,98 @@ class BmoScraper:
             for key, val in self.notes_dict.items()
         }
 
+    # Set PDW index
+    def set_pdw_index(self):
+        self.pdw_df.set_index('PDW Fields', inplace=True)
+
+    # Rule: PDW Name
+    def _PDW_Name(self):
+        for key in self.notes_dict.keys():
+            self.pdw_df[key] = None
+            self.pdw_df.at['PDW Name',
+                           key] = 'https://www.bmonotes.com/Note/' + key
+
+    # Rule: callBarrierLevelFinal
+    def _callBarrierLevelFinal(self):
+        for key, val in self.notes_dict.items():
+            # Check if right type of note
+            if 'Payment Schedule' in val.keys():
+                # Replace '-' with NaN
+                self.notes_dict[key]['Payment Schedule'].replace('-',
+                                                                 None,
+                                                                 inplace=True,
+                                                                 regex=False)
+
+                # Set filter to first non-null value
+                mask = ~self.notes_dict[key]['Payment Schedule'][
+                    'Autocall Level'].isnull()
+
+                # Set value in the PDW table
+                self.pdw_df.at[
+                    'productCall.callBarrierLevelFinal', key] = float(
+                        self.notes_dict[key]['Payment Schedule']
+                        ['Autocall Level'].loc[mask].iloc[0].strip('%')) / 100
+
+    # Rule: callObservationDateList
+    def _callObservationDateList(self):
+        for key, val in self.notes_dict.items():
+            # Check if right type of note
+            if 'Payment Schedule' in val.keys():
+                # Add the entire observation date column as a list
+                self.pdw_df.at['productCall.callObservationDateList',
+                               key] = self.notes_dict[key]['Payment Schedule'][
+                                   'Observation Date'].to_list()
+
+    # Rule: callObservationFrequency
+    def _callObservationFrequency(self):
+
+        def check_call_freq(self, dt_days):
+            if 28 <= dt_days <= 31:
+                self.pdw_df.at['productCall.callObservationFrequency',
+                               key] = 'MONTHLY'
+            elif 14 <= dt_days <= 16:
+                self.pdw_df.at['productCall.callObservationFrequency',
+                               key] = 'BI_MONTHLY'
+            elif dt_days == 1:
+                self.pdw_df.at['productCall.callObservationFrequency',
+                               key] = 'DAILY'
+            elif 364 <= dt_days <= 366:
+                self.pdw_df.at['productCall.callObservationFrequency',
+                               key] = 'ANUALLY'
+            elif 89 <= dt_days <= 92:
+                self.pdw_df.at['productCall.callObservationFrequency',
+                               key] = 'QUARTERLY'
+            else:
+                self.pdw_df.at['productCall.callObservationFrequency',
+                               key] = 'CUSTOM'
+
+        for key, val in self.notes_dict.items():
+            # Check if right type of note
+            if 'Payment Schedule' in val.keys():
+                # Add the entire observation date column as a list
+                dt_diff = pd.to_datetime(
+                    self.notes_dict[key]['Payment Schedule']
+                    ['Observation Date'])
+                dt_diff = dt_diff - dt_diff.shift()
+                dt_days = dt_diff.mean().days
+                check_call_freq(self, dt_days)
+
 
 # %% Set of URLs
-bmo_urls = {
+bmo_urls = [
     'https://www.bmonotes.com/Note/JHN7482',
     'https://www.bmonotes.com/Note/JHN15954'
-}
+]
 
 # %% Add to object
 bmo = BmoScraper(bmo_urls)
 bmo.transpose_set_header()
 bmo.label_note_tables()
+bmo.set_pdw_index()
+bmo._PDW_Name()
+bmo._callBarrierLevelFinal()
+bmo._callObservationDateList()
+bmo._callObservationFrequency()
 
-# %% Get rules for each
-pdw_df = {
-    'JHN7482':
-    bmo.bmo_example_fields.loc[~bmo.bmo_example_fields['JHN7482'].isna(),
-                               ['PDW Fields', 'JHN7482']],
-    'JHN15954':
-    bmo.bmo_example_fields.loc[~bmo.bmo_example_fields['JHN15954'].isna(),
-                               ['PDW Fields', 'JHN15954']],
-}
+# %% Final results
+bmo.pdw_df
