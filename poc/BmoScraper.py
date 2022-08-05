@@ -1,5 +1,7 @@
 # %% Libs
 import pandas as pd
+from bs4 import BeautifulSoup
+from urllib.request import urlopen
 
 pd.set_option('display.max_rows', 200)
 
@@ -27,7 +29,7 @@ class BmoScraper:
         # This checks if the scrape results are a true table or not
         for key, val in self.notes_dict.items():
             for i in range(len(val)):
-                if ~bmo.skip_cols.isin(bmo.notes_dict[key][i].columns).any():
+                if ~self.skip_cols.isin(self.notes_dict[key][i].columns).any():
                     self.notes_dict[key][i] = self.notes_dict[key][i].T
                     reassign_cols_truncate(self, key, i)
                 else:
@@ -132,6 +134,7 @@ class BmoScraper:
                 else:
                     self.pdw_df.at['productCall.callType', key] = 'Auto Step'
 
+    # Rule: numberNoCallPeriods
     def _numberNoCallPeriods(self):
         # Check if right type of note
         for key, val in self.notes_dict.items():
@@ -141,6 +144,76 @@ class BmoScraper:
                     self.notes_dict[key]['Payment Schedule'].loc[
                         self.notes_dict[key]['Payment Schedule']
                         ['Autocall Level'].isna()]) + 1
+
+    # Rule: currency
+    def _currency(self):
+        # Check if right type of note
+        for key, val in self.notes_dict.items():
+            if 'Product Details' in val.keys():
+                if 'Currency' in val.keys():
+                    # Get currency column
+                    self.pdw_df.at['productGeneral.currency',
+                                   key] = self.notes_dict[key][
+                                       'Product Details']['Currency'][0]
+
+    # Rule: cusip
+    def _cusip(self):
+        # Check if right type of note
+        for key, val in self.notes_dict.items():
+            # Get JHN column and correct length
+            if 'Product Details' in val.keys():
+                if 'JHN Code' in val['Product Details'].columns:
+                    jhn = self.notes_dict['JHN7482']['Product Details'][
+                        'JHN Code'][0]
+                    if len(jhn) == 7:
+                        self.pdw_df.at['productGeneral.cusip',
+                                       key] = 'CA' + jhn
+                    elif len(jhn) == 8:
+                        self.pdw_df.at['productGeneral.cusip', key] = 'C' + jhn
+                    else:
+                        self.pdw_df.at['productGeneral.cusip', key] = jhn
+
+    # Rule: issueDate
+    def _issueDate(self):
+        # Check if right type of note
+        for key, val in self.notes_dict.items():
+            # Get JHN column and correct length
+            if 'Product Details' in val.keys():
+                if 'Issue Date' in val['Product Details'].columns:
+                    self.pdw_df.at[
+                        'productGeneral.issueDate', key] = pd.to_datetime(
+                            self.notes_dict['JHN7482']['Product Details']
+                            ['Issue Date']).dt.strftime(r'%m/%d/%Y')[0]
+
+    # Rule: issuer
+    def _issuer(self):
+        for key in self.notes_dict.keys():
+            # Hardcode for now
+            self.pdw_df.at['productGeneral.issuer', key] = 'Bank of Montreal'
+
+    # Rule: productName
+    def _productName(self):
+        # Get title of webpages
+        for key in self.notes_dict.keys():
+            soup = BeautifulSoup(urlopen('https://www.bmonotes.com/Note/' +
+                                         key),
+                                 features="lxml")
+            self.pdw_df.at['productGeneral.productName',
+                           key] = str(soup.find_all('h1')[1]).replace(
+                               r'<h1>', '').replace(r'</h1>', '').strip()
+
+    # Rule: stage
+    def _stage(self):
+        # Simple hardcode
+        for key in self.notes_dict.keys():
+            self.pdw_df.at['productGeneral.stage', key] = 'Ops Review'
+
+    # Rule: status
+    def _status(self):
+        # Simple hardcode
+        for key in self.notes_dict.keys():
+            self.pdw_df.at['productGeneral.status',
+                           key] = 'Update Product Details'
 
 
 # %% Set of URLs
@@ -160,6 +233,13 @@ bmo._callObservationDateList()
 bmo._callObservationFrequency()
 bmo._callType()
 bmo._numberNoCallPeriods()
+bmo._currency()
+bmo._cusip()
+bmo._issueDate()
+bmo._issuer()
+bmo._productName()
+bmo._stage()
+bmo._status()
 
 # %% Final results
 bmo.pdw_df
