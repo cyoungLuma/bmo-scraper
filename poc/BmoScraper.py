@@ -3,8 +3,6 @@ import pandas as pd
 from bs4 import BeautifulSoup
 from urllib.request import urlopen
 
-pd.set_option('display.max_rows', 200)
-
 
 # %% Read in the examples
 class BmoScraper:
@@ -163,8 +161,8 @@ class BmoScraper:
             # Get JHN column and correct length
             if 'Product Details' in val.keys():
                 if 'JHN Code' in val['Product Details'].columns:
-                    jhn = self.notes_dict['JHN7482']['Product Details'][
-                        'JHN Code'][0]
+                    jhn = self.notes_dict[key]['Product Details']['JHN Code'][
+                        0]
                     if len(jhn) == 7:
                         self.pdw_df.at['productGeneral.cusip',
                                        key] = 'CA' + jhn
@@ -177,12 +175,12 @@ class BmoScraper:
     def _issueDate(self):
         # Check if right type of note
         for key, val in self.notes_dict.items():
-            # Get JHN column and correct length
+            # Get date in right format
             if 'Product Details' in val.keys():
                 if 'Issue Date' in val['Product Details'].columns:
                     self.pdw_df.at[
                         'productGeneral.issueDate', key] = pd.to_datetime(
-                            self.notes_dict['JHN7482']['Product Details']
+                            self.notes_dict[key]['Product Details']
                             ['Issue Date']).dt.strftime(r'%m/%d/%Y')[0]
 
     # Rule: issuer
@@ -215,6 +213,158 @@ class BmoScraper:
             self.pdw_df.at['productGeneral.status',
                            key] = 'Update Product Details'
 
+    # Rule: tenorFinal
+    def _tenorFinal(self):
+        # Get Term value
+        for key, val in self.notes_dict.items():
+            if 'Product Details' in val.keys():
+                if 'Term' in val['Product Details'].columns:
+                    self.pdw_df.at['productGeneral.tenorFinal', key] = int(
+                        float(self.notes_dict[key]['Product Details']['Term']
+                              [0].split()[0]))
+
+    # Rule: tenorUnit
+    def _tenorUnit(self):
+        # Get Term unit
+        for key, val in self.notes_dict.items():
+            if 'Product Details' in val.keys():
+                if 'Term' in val['Product Details'].columns:
+                    self.pdw_df.at['productGeneral.tenorUnit',
+                                   key] = self.notes_dict[key][
+                                       'Product Details']['Term'][0].split()[1]
+
+    # Rule: underlierList
+    def _underlierList(self):
+        # Get value from table
+        for key, val in self.notes_dict.items():
+            if 'Product Details' in val.keys():
+                if 'Linked To' in val['Product Details'].columns:
+                    self.pdw_df.at['productGeneral.underlierList',
+                                   key] = self.notes_dict[key][
+                                       'Product Details']['Linked To'][0]
+
+    # Rule: underlierweight
+    def _underlierweight(self):
+        # Check for portfolio summary section and get weights
+        for key, val in self.notes_dict.items():
+            if 'Portfolio Summary' in val.keys():
+                underlier_weight = self.notes_dict[key][
+                    'Portfolio Summary'].iloc[:-1, :][
+                        'Share Weight'].str.replace('%',
+                                                    '').astype(float) / 100
+                self.pdw_df.at['productGeneral.underlierList.underlierweight',
+                               key] = underlier_weight.to_list()
+
+    # Rule: upsideParticipationRateFinal
+    def _upsideParticipationRateFinal(self):
+        # Get value from table & convert to float
+        for key, val in self.notes_dict.items():
+            if 'Product Details' in val.keys():
+                if 'Upside Participation' in val['Product Details'].columns:
+                    self.pdw_df.at[
+                        'productGrowth.upsideParticipationRateFinal',
+                        key] = int(
+                            float(self.notes_dict[key]['Product Details']
+                                  ['Upside Participation'][0].replace('%', ''))
+                            / 100)
+
+    # Rule: downsideType
+    def _downsideType(self):
+        # If exists, static
+        for key, val in self.notes_dict.items():
+            if 'Product Details' in val.keys():
+                if 'Barrier Protection' in val['Product Details'].columns:
+                    self.pdw_df.at['productProtection.downsideType',
+                                   key] = 'Barrier'
+
+    # Rule: principalBarrierLevelFinal
+    def _principalBarrierLevelFinal(self):
+        # Get value from table & convert to float
+        for key, val in self.notes_dict.items():
+            if 'Product Details' in val.keys():
+                if 'Barrier Protection' in val['Product Details'].columns:
+                    self.pdw_df.at[
+                        'productProtection.principalBarrierLevelFinal',
+                        key] = float(self.notes_dict[key]['Product Details']
+                                     ['Barrier Protection'][0].replace(
+                                         '-', '').replace('%',
+                                                          '').strip()) / 100
+
+    # Rule: countryDistribution
+    def _countryDistribution(self):
+        # Hardcode
+        for key in self.notes_dict.keys():
+            self.pdw_df.at['productRegulatory.countryDistribution',
+                           key] = 'Canada'
+
+    # Rule: paymentBarrierFinal
+    def _paymentBarrierFinal(self):
+        # Grab field from table & convert to float
+        for key, val in self.notes_dict.items():
+            if 'Indicative Return' in val.keys():
+                if 'Coupon Knock-Out Level  (Basket Return)' in val[
+                        'Indicative Return'].columns:
+                    self.pdw_df.at[
+                        'productYield.paymentBarrierFinal', key] = float(
+                            self.notes_dict[key]['Indicative Return']
+                            ['Coupon Knock-Out Level  (Basket Return)'][0].
+                            replace('-', '').replace('%', '').strip()) / 100
+
+    # Rule: paymentDateList
+    def _paymentDateList(self):
+        # Add column as list
+        for key, val in self.notes_dict.items():
+            if 'Payment Schedule' in val.keys():
+                if 'Coupon Payment Date' in val['Payment Schedule'].columns:
+                    self.pdw_df.at[
+                        'productYield.paymentDateList',
+                        key] = self.notes_dict[key]['Payment Schedule'][
+                            'Coupon Payment Date'].to_list()
+
+    # Rule: paymentEvaluationFrequencyFinal
+    def _paymentEvaluationFrequencyFinal(self):
+        # If exists, static
+        for key, val in self.notes_dict.items():
+            if 'Product Details' in val.keys():
+                if 'Pay Frequency' in val['Product Details'].columns:
+                    self.pdw_df.at[
+                        'productYield.paymentEvaluationFrequencyFinal',
+                        key] = self.notes_dict[key]['Product Details'][
+                            'Pay Frequency'][0]
+
+    # Rule: paymentRatePerAnnumFinal
+    def _paymentRatePerAnnumFinal(self):
+        # If exists, static & convert % to float
+        for key, val in self.notes_dict.items():
+            if 'Product Details' in val.keys():
+                if 'Contingent Coupon' in val['Product Details'].columns:
+                    self.pdw_df.at['productYield.paymentRatePerAnnumFinal',
+                                   key] = float(
+                                       self.notes_dict[key]['Product Details']
+                                       ['Contingent Coupon'][0].replace(
+                                           '-', '').replace('%',
+                                                            '').strip()) / 100
+
+    # Rule: fundservID
+    def _fundservID(self):
+        # If exists, static
+        for key, val in self.notes_dict.items():
+            if 'Product Details' in val.keys():
+                if 'JHN Code' in val['Product Details'].columns:
+                    self.pdw_df.at['productgeneral.fundservID',
+                                   key] = self.notes_dict[key][
+                                       'Product Details']['JHN Code'][0]
+
+    # Rule: Mark to Market Price
+    def _mark_to_market_price(self):
+        # If exists, static & replace $, convert to float
+        for key, val in self.notes_dict.items():
+            if 'Current Status' in val.keys():
+                if 'Current Bid Price' in val['Current Status'].columns:
+                    self.pdw_df.at['Mark to Market Price', key] = float(
+                        self.notes_dict[key]['Current Status']
+                        ['Current Bid Price'][0].replace('$', ''))
+
 
 # %% Set of URLs
 bmo_urls = [
@@ -240,6 +390,21 @@ bmo._issuer()
 bmo._productName()
 bmo._stage()
 bmo._status()
+bmo._tenorFinal()
+bmo._tenorUnit()
+bmo._underlierList()
+bmo._underlierweight()
+bmo._upsideParticipationRateFinal()
+bmo._downsideType()
+bmo._principalBarrierLevelFinal()
+bmo._countryDistribution()
+bmo._paymentBarrierFinal()
+bmo._paymentDateList()
+bmo._paymentEvaluationFrequencyFinal()
+bmo._paymentRatePerAnnumFinal()
+bmo._fundservID()
+bmo._mark_to_market_price()
 
 # %% Final results
+pd.set_option('display.max_rows', 200)
 bmo.pdw_df
