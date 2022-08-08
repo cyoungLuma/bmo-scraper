@@ -189,6 +189,18 @@ class BmoScraper:
             # Hardcode for now
             self.pdw_df.at['productGeneral.issuer', key] = 'Bank of Montreal'
 
+    # Rule: maturityDate
+    def _maturityDate(self):
+        # Check if right type of note
+        for key, val in self.notes_dict.items():
+            # Get date in right format
+            if 'Product Details' in val.keys():
+                if 'Maturity Date' in val['Product Details'].columns:
+                    self.pdw_df.at[
+                        'productGeneral.maturityDate', key] = pd.to_datetime(
+                            self.notes_dict[key]['Product Details']
+                            ['Maturity Date']).dt.strftime(r'%m/%d/%Y')[0]
+
     # Rule: productName
     def _productName(self):
         # Get title of webpages
@@ -387,6 +399,7 @@ bmo._currency()
 bmo._cusip()
 bmo._issueDate()
 bmo._issuer()
+bmo._maturityDate()
 bmo._productName()
 bmo._stage()
 bmo._status()
