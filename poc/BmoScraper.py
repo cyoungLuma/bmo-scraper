@@ -128,9 +128,12 @@ class BmoScraper:
                 autocall_series = self.notes_dict[key]['Payment Schedule'][
                     'Autocall Level'].dropna().reset_index(drop=True)
                 if (autocall_series == autocall_series[0]).all():
-                    self.pdw_df.at['productCall.callType', key] = 'Autocall'
+                    # self.pdw_df.at['productCall.callType', key] = 'Autocall'
+                    self.pdw_df.at['productCall.callType', key] = 'AUTO'
                 else:
-                    self.pdw_df.at['productCall.callType', key] = 'Auto Step'
+                    # self.pdw_df.at['productCall.callType', key] = 'Auto Step'
+                    self.pdw_df.at['productCall.callType',
+                                   key] = 'AUTOCALL_STEP'
 
     # Rule: numberNoCallPeriods
     def _numberNoCallPeriods(self):
@@ -216,7 +219,7 @@ class BmoScraper:
     def _stage(self):
         # Simple hardcode
         for key in self.notes_dict.keys():
-            self.pdw_df.at['productGeneral.stage', key] = 'Ops Review'
+            self.pdw_df.at['productGeneral.stage', key] = 'OPS_REVIEW'
 
     # Rule: status
     def _status(self):
@@ -231,9 +234,9 @@ class BmoScraper:
         for key, val in self.notes_dict.items():
             if 'Product Details' in val.keys():
                 if 'Term' in val['Product Details'].columns:
-                    self.pdw_df.at['productGeneral.tenorFinal', key] = int(
-                        float(self.notes_dict[key]['Product Details']['Term']
-                              [0].split()[0]))
+                    self.pdw_df.at['productGeneral.tenorFinal', key] = float(
+                        self.notes_dict[key]['Product Details']['Term']
+                        [0].split()[0])
 
     # Rule: tenorUnit
     def _tenorUnit(self):
@@ -241,9 +244,10 @@ class BmoScraper:
         for key, val in self.notes_dict.items():
             if 'Product Details' in val.keys():
                 if 'Term' in val['Product Details'].columns:
-                    self.pdw_df.at['productGeneral.tenorUnit',
-                                   key] = self.notes_dict[key][
-                                       'Product Details']['Term'][0].split()[1]
+                    self.pdw_df.at[
+                        'productGeneral.tenorUnit',
+                        key] = self.notes_dict[key]['Product Details']['Term'][
+                            0].split()[1].upper()
 
     # Rule: underlierList
     def _underlierList(self):
@@ -275,10 +279,9 @@ class BmoScraper:
                 if 'Upside Participation' in val['Product Details'].columns:
                     self.pdw_df.at[
                         'productGrowth.upsideParticipationRateFinal',
-                        key] = int(
-                            float(self.notes_dict[key]['Product Details']
-                                  ['Upside Participation'][0].replace('%', ''))
-                            / 100)
+                        key] = float(self.notes_dict[key]['Product Details']
+                                     ['Upside Participation'][0].replace(
+                                         '%', '')) / 100
 
     # Rule: downsideType
     def _downsideType(self):
@@ -287,7 +290,7 @@ class BmoScraper:
             if 'Product Details' in val.keys():
                 if 'Barrier Protection' in val['Product Details'].columns:
                     self.pdw_df.at['productProtection.downsideType',
-                                   key] = 'Barrier'
+                                   key] = 'BARRIER'
 
     # Rule: principalBarrierLevelFinal
     def _principalBarrierLevelFinal(self):
@@ -307,7 +310,7 @@ class BmoScraper:
         # Hardcode
         for key in self.notes_dict.keys():
             self.pdw_df.at['productRegulatory.countryDistribution',
-                           key] = 'Canada'
+                           key] = 'CANADA'
 
     # Rule: paymentBarrierFinal
     def _paymentBarrierFinal(self):
@@ -342,7 +345,7 @@ class BmoScraper:
                     self.pdw_df.at[
                         'productYield.paymentEvaluationFrequencyFinal',
                         key] = self.notes_dict[key]['Product Details'][
-                            'Pay Frequency'][0]
+                            'Pay Frequency'][0].upper()
 
     # Rule: paymentRatePerAnnumFinal
     def _paymentRatePerAnnumFinal(self):
