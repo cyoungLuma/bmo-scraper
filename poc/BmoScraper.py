@@ -366,7 +366,7 @@ class BmoScraper:
         for key, val in self.notes_dict.items():
             if 'Product Details' in val.keys():
                 if 'JHN Code' in val['Product Details'].columns:
-                    self.pdw_df.at['productgeneral.fundservID',
+                    self.pdw_df.at['productGeneral.fundservID',
                                    key] = self.notes_dict[key][
                                        'Product Details']['JHN Code'][0]
 
@@ -380,6 +380,40 @@ class BmoScraper:
                         self.notes_dict[key]['Current Status']
                         ['Current Bid Price'][0].replace('$', ''))
 
+    # Run all rules
+    def run_all_rules(self):
+        self.transpose_set_header()
+        self.label_note_tables()
+        self.set_pdw_index()
+        self._PDW_Name()
+        self._callBarrierLevelFinal()
+        self._callObservationDateList()
+        self._callObservationFrequency()
+        self._callType()
+        self._numberNoCallPeriods()
+        self._currency()
+        self._cusip()
+        self._issueDate()
+        self._issuer()
+        self._maturityDate()
+        self._productName()
+        self._stage()
+        self._status()
+        self._tenorFinal()
+        self._tenorUnit()
+        self._underlierList()
+        self._underlierweight()
+        self._upsideParticipationRateFinal()
+        self._downsideType()
+        self._principalBarrierLevelFinal()
+        self._countryDistribution()
+        self._paymentBarrierFinal()
+        self._paymentDateList()
+        self._paymentEvaluationFrequencyFinal()
+        self._paymentRatePerAnnumFinal()
+        self._fundservID()
+        self._mark_to_market_price()
+
 
 # %% Set of URLs
 bmo_urls = [
@@ -389,37 +423,7 @@ bmo_urls = [
 
 # %% Add to object
 bmo = BmoScraper(bmo_urls)
-bmo.transpose_set_header()
-bmo.label_note_tables()
-bmo.set_pdw_index()
-bmo._PDW_Name()
-bmo._callBarrierLevelFinal()
-bmo._callObservationDateList()
-bmo._callObservationFrequency()
-bmo._callType()
-bmo._numberNoCallPeriods()
-bmo._currency()
-bmo._cusip()
-bmo._issueDate()
-bmo._issuer()
-bmo._maturityDate()
-bmo._productName()
-bmo._stage()
-bmo._status()
-bmo._tenorFinal()
-bmo._tenorUnit()
-bmo._underlierList()
-bmo._underlierweight()
-bmo._upsideParticipationRateFinal()
-bmo._downsideType()
-bmo._principalBarrierLevelFinal()
-bmo._countryDistribution()
-bmo._paymentBarrierFinal()
-bmo._paymentDateList()
-bmo._paymentEvaluationFrequencyFinal()
-bmo._paymentRatePerAnnumFinal()
-bmo._fundservID()
-bmo._mark_to_market_price()
+bmo.run_all_rules()
 
 # %% Final results
 pd.set_option('display.max_rows', 200)
