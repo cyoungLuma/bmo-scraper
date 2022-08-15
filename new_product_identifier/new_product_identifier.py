@@ -2,6 +2,7 @@ import keyring
 import pandas as pd
 import datetime
 import time
+import pymssql
 from selenium import webdriver
 from urllib.request import urlopen
 from pymongo import MongoClient
@@ -95,11 +96,54 @@ class Driver:
         ]
 
         return nbcss_active_products
+    
+    def get_rbc_products(self):
+        # Setup for rbc
+        rbc_act_dict = {}
+        chrome_path = r"/opt/homebrew/bin/chromedriver"
+        op = webdriver.ChromeOptions()
+        op.add_argument('--headless')
+        driver = webdriver.Chrome(chrome_path, options=op)
+        url = 'https://www.rbcnotes.com/Products'
+        # Get first page
+        page = driver.get(url)
+        time.sleep(2)
+        temp_table = pd.read_html(driver.page_source)
+        temp_data = temp_table[1][(temp_table[1][7].isna()==False) & (temp_table[1][7].str.contains('Day')==False)]
+        temp_data.columns = temp_table[0].columns
+        rbc_act_dict[0] = temp_data
+        rbc_act_dict[0]['urls'] = [driver.find_element_by_xpath('//*[@id="productGrid"]/div[2]/div[3]/table/tbody/tr[{}]/td[3]/a'.format(i)).get_attribute('href') 
+                                        for i in range(1, len(rbc_act_dict[0])*2, 2)]
+        # Get remaining 4 pages
+        for num in range(2, 6):
+            # Scroll to bottom of page to avoid cookie consent form
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            driver.find_element_by_xpath('//*[@id="productGrid"]/div[2]/div[4]/a[3]').click()
+            time.sleep(2)
+            temp_table = pd.read_html(driver.page_source)
+            temp_data = temp_table[1][(temp_table[1][7].isna()==False) & (temp_table[1][7].str.contains('Day')==False)]
+            temp_data.columns = temp_table[0].columns
+            rbc_act_dict[num] = temp_data
+            rbc_act_dict[num]['urls'] = [driver.find_element_by_xpath('//*[@id="productGrid"]/div[2]/div[3]/table/tbody/tr[{}]/td[3]/a'.format(i)).get_attribute('href') 
+                                        for i in range(1, len(rbc_act_dict[0])*2, 2)]
+        driver.close()
+        # Combine the dataframes
+        rbc_active_products = pd.concat([rbc_act_dict[k] for k in rbc_act_dict.keys()], ignore_index=True)
+        rbc_active_products = rbc_active_products[['Product Name', 'FundSERV Code', 'ADP Code',
+            'CUSIP', 'End of Day Price', 'Current ETC', 'ETC End Date',
+            'Issue Date', 'Maturity Date', 'Currency', 'urls']]
+        # Create pdw cusip for comparison
+        rbc_active_products['pdwCusip'] = [
+            'CA' + i if len(i) == 7 else 'C' + i for i in rbc_active_products['FundSERV Code']
+        ]
+
+        return rbc_active_products
 
 
     def compare_site_to_pdw(self, site, site_prods, pdw_prods):
         ''''''
         # Filter out any products already present in pdw
+        #### rbc has come cusips, too. Need to account for those
         new_active_products = site_prods[
             (site_prods['pdwCusip'].isin(pdw_prods['cusip'])==False) &
             (site_prods['pdwCusip'].isin(pdw_prods['isin'])==False)
@@ -107,7 +151,7 @@ class Driver:
         # Create list of product urls to return
         if site == 'bmo':
             urls = ['https://www.bmonotes.com/Note/' + i for i in new_active_products['JHN Code / Cusip']]
-        elif site == 'nbcss':
+        elif site in ['nbcss', 'rbc']:
             urls = new_active_products['urls'].unique()
 
         return urls
@@ -126,4 +170,8 @@ if __name__ == '__main__':
     # Get new NBCSS products
     nbcss_prods = driver.get_nbcss_products()
     print(driver.compare_site_to_pdw('nbcss', nbcss_prods, recent_pdw_products_dict))
+
+    # Get new NBCSS products
+    rbc_prods = driver.get_rbc_products()
+    print(driver.compare_site_to_pdw('rbc', rbc_prods, recent_pdw_products_dict))
     
