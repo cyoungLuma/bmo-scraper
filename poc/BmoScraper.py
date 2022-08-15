@@ -1,13 +1,18 @@
 # %% Libs
 import pandas as pd
 from bs4 import BeautifulSoup
+from keyring import get_password
+from pymongo import MongoClient
+from pymongo.errors import DuplicateKeyError
 from urllib.request import urlopen
 
 
 # %% Read in the examples
 class BmoScraper:
     # Pass in note URLs & lookup for PDW
-    def __init__(self, bmo_urls):
+    def __init__(self, bmo_urls, user, password, host, port, options):
+        cxn_string = f"mongodb://{user}:{password}@{host}:{port}/?{options}"
+        self.client = MongoClient(cxn_string)
         self.notes_dict = {
             note.rsplit('/', 1)[-1]: pd.read_html(note)
             for note in bmo_urls
@@ -87,7 +92,6 @@ class BmoScraper:
 
     # Rule: callObservationFrequency
     def _callObservationFrequency(self):
-
         def check_call_freq(self, dt_days):
             if 28 <= dt_days <= 31:
                 self.pdw_df.at['productCall.callObservationFrequency',
@@ -128,9 +132,12 @@ class BmoScraper:
                 autocall_series = self.notes_dict[key]['Payment Schedule'][
                     'Autocall Level'].dropna().reset_index(drop=True)
                 if (autocall_series == autocall_series[0]).all():
-                    self.pdw_df.at['productCall.callType', key] = 'Autocall'
+                    # self.pdw_df.at['productCall.callType', key] = 'Autocall'
+                    self.pdw_df.at['productCall.callType', key] = 'AUTO'
                 else:
-                    self.pdw_df.at['productCall.callType', key] = 'Auto Step'
+                    # self.pdw_df.at['productCall.callType', key] = 'Auto Step'
+                    self.pdw_df.at['productCall.callType',
+                                   key] = 'AUTOCALL_STEP'
 
     # Rule: numberNoCallPeriods
     def _numberNoCallPeriods(self):
@@ -216,7 +223,7 @@ class BmoScraper:
     def _stage(self):
         # Simple hardcode
         for key in self.notes_dict.keys():
-            self.pdw_df.at['productGeneral.stage', key] = 'Ops Review'
+            self.pdw_df.at['productGeneral.stage', key] = 'OPS_REVIEW'
 
     # Rule: status
     def _status(self):
@@ -231,9 +238,9 @@ class BmoScraper:
         for key, val in self.notes_dict.items():
             if 'Product Details' in val.keys():
                 if 'Term' in val['Product Details'].columns:
-                    self.pdw_df.at['productGeneral.tenorFinal', key] = int(
-                        float(self.notes_dict[key]['Product Details']['Term']
-                              [0].split()[0]))
+                    self.pdw_df.at['productGeneral.tenorFinal', key] = float(
+                        self.notes_dict[key]['Product Details']['Term']
+                        [0].split()[0])
 
     # Rule: tenorUnit
     def _tenorUnit(self):
@@ -241,9 +248,10 @@ class BmoScraper:
         for key, val in self.notes_dict.items():
             if 'Product Details' in val.keys():
                 if 'Term' in val['Product Details'].columns:
-                    self.pdw_df.at['productGeneral.tenorUnit',
-                                   key] = self.notes_dict[key][
-                                       'Product Details']['Term'][0].split()[1]
+                    self.pdw_df.at[
+                        'productGeneral.tenorUnit',
+                        key] = self.notes_dict[key]['Product Details']['Term'][
+                            0].split()[1].upper()
 
     # Rule: underlierList
     def _underlierList(self):
@@ -275,10 +283,9 @@ class BmoScraper:
                 if 'Upside Participation' in val['Product Details'].columns:
                     self.pdw_df.at[
                         'productGrowth.upsideParticipationRateFinal',
-                        key] = int(
-                            float(self.notes_dict[key]['Product Details']
-                                  ['Upside Participation'][0].replace('%', ''))
-                            / 100)
+                        key] = float(self.notes_dict[key]['Product Details']
+                                     ['Upside Participation'][0].replace(
+                                         '%', '')) / 100
 
     # Rule: downsideType
     def _downsideType(self):
@@ -287,7 +294,7 @@ class BmoScraper:
             if 'Product Details' in val.keys():
                 if 'Barrier Protection' in val['Product Details'].columns:
                     self.pdw_df.at['productProtection.downsideType',
-                                   key] = 'Barrier'
+                                   key] = 'BARRIER'
 
     # Rule: principalBarrierLevelFinal
     def _principalBarrierLevelFinal(self):
@@ -307,7 +314,7 @@ class BmoScraper:
         # Hardcode
         for key in self.notes_dict.keys():
             self.pdw_df.at['productRegulatory.countryDistribution',
-                           key] = 'Canada'
+                           key] = 'CANADA'
 
     # Rule: paymentBarrierFinal
     def _paymentBarrierFinal(self):
@@ -342,7 +349,7 @@ class BmoScraper:
                     self.pdw_df.at[
                         'productYield.paymentEvaluationFrequencyFinal',
                         key] = self.notes_dict[key]['Product Details'][
-                            'Pay Frequency'][0]
+                            'Pay Frequency'][0].upper()
 
     # Rule: paymentRatePerAnnumFinal
     def _paymentRatePerAnnumFinal(self):
@@ -363,7 +370,7 @@ class BmoScraper:
         for key, val in self.notes_dict.items():
             if 'Product Details' in val.keys():
                 if 'JHN Code' in val['Product Details'].columns:
-                    self.pdw_df.at['productgeneral.fundservID',
+                    self.pdw_df.at['productGeneral.fundservID',
                                    key] = self.notes_dict[key][
                                        'Product Details']['JHN Code'][0]
 
@@ -377,47 +384,123 @@ class BmoScraper:
                         self.notes_dict[key]['Current Status']
                         ['Current Bid Price'][0].replace('$', ''))
 
+    # Run all rules
+    def run_all_rules(self):
+        self.transpose_set_header()
+        self.label_note_tables()
+        self.set_pdw_index()
+        self._PDW_Name()
+        self._callBarrierLevelFinal()
+        self._callObservationDateList()
+        self._callObservationFrequency()
+        self._callType()
+        self._numberNoCallPeriods()
+        self._currency()
+        self._cusip()
+        self._issueDate()
+        self._issuer()
+        self._maturityDate()
+        self._productName()
+        self._stage()
+        self._status()
+        self._tenorFinal()
+        self._tenorUnit()
+        self._underlierList()
+        self._underlierweight()
+        self._upsideParticipationRateFinal()
+        self._downsideType()
+        self._principalBarrierLevelFinal()
+        self._countryDistribution()
+        self._paymentBarrierFinal()
+        self._paymentDateList()
+        self._paymentEvaluationFrequencyFinal()
+        self._paymentRatePerAnnumFinal()
+        self._fundservID()
+        self._mark_to_market_price()
 
-# %% Set of URLs
+    def reset_pdw_indices(self):
+        # Reset indices to prepare to JSON
+        self.pdw_insert_df = self.pdw_df.copy()
+        self.pdw_insert_df.drop(['PDW Name', 'Mark to Market Price'],
+                                inplace=True)
+        self.pdw_insert_df.dropna(subset=self.pdw_df.columns,
+                                  how='all',
+                                  inplace=True)
+        self.pdw_insert_df.reset_index(inplace=True)
+
+    def process_pdw_dicts(self):
+        # Process for JSON
+        self.pdw_df_dict = {}
+        for col in self.pdw_df.columns:
+            self.pdw_df_dict[col] = self.pdw_insert_df[['PDW Fields',
+                                                        col]].dropna()
+            self.pdw_df_dict[col] = pd.concat(
+                [
+                    self.pdw_df_dict[col]['PDW Fields'].str.split(
+                        '.', expand=True), self.pdw_df_dict[col]
+                ],
+                axis=1,
+            )
+            self.pdw_df_dict[col].drop(columns='PDW Fields', inplace=True)
+
+    def insert_pdw_json_to_pdw(self):
+        # Convert to JSON & set up cxn
+        self.result = []
+        db = self.client['test-masking-dev']
+        PdwProductCore = db.PdwProductCore
+        for col in self.pdw_df_dict.keys():
+            len_cols = list(range(len(self.pdw_df_dict[col].columns) - 1))
+            pdw_pre_insert = self.pdw_df_dict[col].set_index(len_cols).groupby(
+                level=0).apply(
+                    lambda x: x.xs(x.name)[col].to_dict()).to_dict()
+
+            # Prepare final JSON
+            pdw_insert = {}
+            for key, val in pdw_pre_insert.items():
+                pdw_insert[key] = {}
+                for key2, val2 in val.items():
+                    if isinstance(key2, tuple):
+                        if isinstance(key2[1], str):
+                            pdw_insert[key][key2[0]] = {key2[1]: val2}
+                        else:
+                            pdw_insert[key][key2[0]] = val2
+                    else:
+                        pdw_insert[key][key2] = val2
+
+            # Insert into DB
+            try:
+                self.result.append(
+                    (col, PdwProductCore.insert_one(pdw_insert)))
+            except DuplicateKeyError:
+                self.result.append((col, 'Product exists'))
+
+    def write_to_pdw(self):
+        # The writing process as one method
+        self.reset_pdw_indices()
+        self.process_pdw_dicts()
+        self.insert_pdw_json_to_pdw()
+
+
+# %% Params
 bmo_urls = [
     'https://www.bmonotes.com/Note/JHN7482',
     'https://www.bmonotes.com/Note/JHN15954'
 ]
+user = "skimble"
+password = get_password('docdb_preprod', user)
+host = "dev-documentdb.cluster-cb6kajicuplh.us-east-1.docdb.amazonaws.com"
+port = "27017"
+options = ("tls=true&tlsAllowInvalidCertificates=true&replicaSet=rs0&"
+           "readPreference=secondaryPreferred&retryWrites=false")
 
-# %% Add to object
-bmo = BmoScraper(bmo_urls)
-bmo.transpose_set_header()
-bmo.label_note_tables()
-bmo.set_pdw_index()
-bmo._PDW_Name()
-bmo._callBarrierLevelFinal()
-bmo._callObservationDateList()
-bmo._callObservationFrequency()
-bmo._callType()
-bmo._numberNoCallPeriods()
-bmo._currency()
-bmo._cusip()
-bmo._issueDate()
-bmo._issuer()
-bmo._maturityDate()
-bmo._productName()
-bmo._stage()
-bmo._status()
-bmo._tenorFinal()
-bmo._tenorUnit()
-bmo._underlierList()
-bmo._underlierweight()
-bmo._upsideParticipationRateFinal()
-bmo._downsideType()
-bmo._principalBarrierLevelFinal()
-bmo._countryDistribution()
-bmo._paymentBarrierFinal()
-bmo._paymentDateList()
-bmo._paymentEvaluationFrequencyFinal()
-bmo._paymentRatePerAnnumFinal()
-bmo._fundservID()
-bmo._mark_to_market_price()
+# %% Add params to object
+bmo = BmoScraper(bmo_urls, user, password, host, port, options)
+bmo.run_all_rules()
 
 # %% Final results
 pd.set_option('display.max_rows', 200)
 bmo.pdw_df
+
+# %% Write to PDW & view status
+bmo.write_to_pdw()
+bmo.result
