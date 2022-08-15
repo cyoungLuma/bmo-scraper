@@ -1,13 +1,18 @@
 # %% Libs
 import pandas as pd
 from bs4 import BeautifulSoup
+from keyring import get_password
+from pymongo import MongoClient
+from pymongo.errors import DuplicateKeyError
 from urllib.request import urlopen
 
 
 # %% Read in the examples
 class BmoScraper:
     # Pass in note URLs & lookup for PDW
-    def __init__(self, bmo_urls):
+    def __init__(self, bmo_urls, user, password, host, port, options):
+        cxn_string = f"mongodb://{user}:{password}@{host}:{port}/?{options}"
+        self.client = MongoClient(cxn_string)
         self.notes_dict = {
             note.rsplit('/', 1)[-1]: pd.read_html(note)
             for note in bmo_urls
@@ -87,7 +92,6 @@ class BmoScraper:
 
     # Rule: callObservationFrequency
     def _callObservationFrequency(self):
-
         def check_call_freq(self, dt_days):
             if 28 <= dt_days <= 31:
                 self.pdw_df.at['productCall.callObservationFrequency',
@@ -414,17 +418,89 @@ class BmoScraper:
         self._fundservID()
         self._mark_to_market_price()
 
+    def reset_pdw_indices(self):
+        # Reset indices to prepare to JSON
+        self.pdw_insert_df = self.pdw_df.copy()
+        self.pdw_insert_df.drop(['PDW Name', 'Mark to Market Price'],
+                                inplace=True)
+        self.pdw_insert_df.dropna(subset=self.pdw_df.columns,
+                                  how='all',
+                                  inplace=True)
+        self.pdw_insert_df.reset_index(inplace=True)
 
-# %% Set of URLs
+    def process_pdw_dicts(self):
+        # Process for JSON
+        self.pdw_df_dict = {}
+        for col in self.pdw_df.columns:
+            self.pdw_df_dict[col] = self.pdw_insert_df[['PDW Fields',
+                                                        col]].dropna()
+            self.pdw_df_dict[col] = pd.concat(
+                [
+                    self.pdw_df_dict[col]['PDW Fields'].str.split(
+                        '.', expand=True), self.pdw_df_dict[col]
+                ],
+                axis=1,
+            )
+            self.pdw_df_dict[col].drop(columns='PDW Fields', inplace=True)
+
+    def insert_pdw_json_to_pdw(self):
+        # Convert to JSON & set up cxn
+        self.result = []
+        db = self.client['test-masking-dev']
+        PdwProductCore = db.PdwProductCore
+        for col in self.pdw_df_dict.keys():
+            len_cols = list(range(len(self.pdw_df_dict[col].columns) - 1))
+            pdw_pre_insert = self.pdw_df_dict[col].set_index(len_cols).groupby(
+                level=0).apply(
+                    lambda x: x.xs(x.name)[col].to_dict()).to_dict()
+
+            # Prepare final JSON
+            pdw_insert = {}
+            for key, val in pdw_pre_insert.items():
+                pdw_insert[key] = {}
+                for key2, val2 in val.items():
+                    if isinstance(key2, tuple):
+                        if isinstance(key2[1], str):
+                            pdw_insert[key][key2[0]] = {key2[1]: val2}
+                        else:
+                            pdw_insert[key][key2[0]] = val2
+                    else:
+                        pdw_insert[key][key2] = val2
+
+            # Insert into DB
+            try:
+                self.result.append(
+                    (col, PdwProductCore.insert_one(pdw_insert)))
+            except DuplicateKeyError:
+                self.result.append((col, 'Product exists'))
+
+    def write_to_pdw(self):
+        # The writing process as one method
+        self.reset_pdw_indices()
+        self.process_pdw_dicts()
+        self.insert_pdw_json_to_pdw()
+
+
+# %% Params
 bmo_urls = [
     'https://www.bmonotes.com/Note/JHN7482',
     'https://www.bmonotes.com/Note/JHN15954'
 ]
+user = "skimble"
+password = get_password('docdb_preprod', user)
+host = "dev-documentdb.cluster-cb6kajicuplh.us-east-1.docdb.amazonaws.com"
+port = "27017"
+options = ("tls=true&tlsAllowInvalidCertificates=true&replicaSet=rs0&"
+           "readPreference=secondaryPreferred&retryWrites=false")
 
-# %% Add to object
-bmo = BmoScraper(bmo_urls)
+# %% Add params to object
+bmo = BmoScraper(bmo_urls, user, password, host, port, options)
 bmo.run_all_rules()
 
 # %% Final results
 pd.set_option('display.max_rows', 200)
 bmo.pdw_df
+
+# %% Write to PDW & view status
+bmo.write_to_pdw()
+bmo.result
