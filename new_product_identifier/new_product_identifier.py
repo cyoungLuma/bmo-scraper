@@ -50,22 +50,57 @@ class Driver:
         ''''''
         # Setup for bmo
         bmo_act_dict = {}
-        # Get first page
-        url = 'https://www.bmonotes.com/Type/PPNs#active'
-        page = self.driver.get(url)
-        time.sleep(2)
-        bmo_act_dict[0] = pd.read_html(self.driver.page_source)[1]
-        # Get remaining 4 pages
-        for num in range(2, 6):
-            self.driver.find_element_by_id("DataTables_Table_1_next").click()
-            time.sleep(2)
-            bmo_act_dict[num] = pd.read_html(self.driver.page_source)[1]
-        # Combine the dataframes
-        bmo_active_products = pd.concat([bmo_act_dict[k] for k in bmo_act_dict.keys()], ignore_index=True)
-        # Create pdw cusip for comparison
-        bmo_active_products['pdwCusip'] = [
-            'CA' + i if len(i) == 7 else 'C' + i for i in bmo_active_products['JHN Code / Cusip']
+        chrome_path = r"/opt/homebrew/bin/chromedriver"
+        op = webdriver.ChromeOptions()
+        op.add_argument('--headless')
+        urls = [
+            'https://www.bmonotes.com/Type/PPNs#active', 
+            'https://www.bmonotes.com/Type/Fixed-Income-Notes#active', 
+            'https://www.bmonotes.com/Type/NPPNs#active'
         ]
+        all_bmo_active_products = pd.DataFrame()
+        for url in urls:
+            print(url)
+            # Get first page
+            driver = webdriver.Chrome(chrome_path, options=op)
+            page = driver.get(url)
+            time.sleep(2)
+            bmo_act_dict[0] = pd.read_html(driver.page_source)[1]
+            # Get remaining pages
+            flag = True
+            num = 1
+            while flag:
+                if 'disabled' in driver.find_element_by_id("DataTables_Table_1_next").get_attribute('class'):
+                    flag = 0
+                else:
+                    driver.find_element_by_id("DataTables_Table_1_next").click()
+                    time.sleep(2)
+                    bmo_act_dict[num] = pd.read_html(driver.page_source)[1]
+                    num += 1
+            driver.close()
+            # Combine the dataframes
+            bmo_active_products = pd.concat([bmo_act_dict[k] for k in bmo_act_dict.keys()], ignore_index=True)
+            all_bmo_active_products = pd.concat([all_bmo_active_products, bmo_active_products], ignore_index=True)
+        # Remove junk
+        all_bmo_active_products = all_bmo_active_products[(all_bmo_active_products['JHN Code / Cusip'].isna()==False) & (all_bmo_active_products['JHN Code / Cusip']!='Loading...')]
+        # Create pdw cusip for comparison
+        listy = []
+        for i in all_bmo_active_products['JHN Code / Cusip']:
+            if 'JHN' in str(i):
+                if len(str(i)) == 7:
+                    listy.append('CA' + str(i))
+                elif len(str(i)) == 8:
+                    listy.append('C' + str(i))
+                elif len(str(i)) == 6:
+                    listy.append('CAA' + str(i))
+                else:
+                    listy.append('Error')
+            else:
+                if len(str(i)) == 9:
+                    listy.append(str(i))
+                else:
+                    listy.append('Error')
+        all_bmo_active_products['pdwCusip'] = listy
 
         return bmo_active_products
     
@@ -167,11 +202,11 @@ if __name__ == '__main__':
     bmo_prods = driver.get_bmo_products()
     print(driver.compare_site_to_pdw('bmo', bmo_prods, recent_pdw_products_dict))
     
-    # Get new NBCSS products
-    nbcss_prods = driver.get_nbcss_products()
-    print(driver.compare_site_to_pdw('nbcss', nbcss_prods, recent_pdw_products_dict))
+    # # Get new NBCSS products
+    # nbcss_prods = driver.get_nbcss_products()
+    # print(driver.compare_site_to_pdw('nbcss', nbcss_prods, recent_pdw_products_dict))
 
-    # Get new NBCSS products
-    rbc_prods = driver.get_rbc_products()
-    print(driver.compare_site_to_pdw('rbc', rbc_prods, recent_pdw_products_dict))
+    # # Get new rbc products
+    # rbc_prods = driver.get_rbc_products()
+    # print(driver.compare_site_to_pdw('rbc', rbc_prods, recent_pdw_products_dict))
     
