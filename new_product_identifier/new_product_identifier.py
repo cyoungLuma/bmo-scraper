@@ -73,7 +73,8 @@ class Driver:
                 if 'disabled' in driver.find_element_by_id("DataTables_Table_1_next").get_attribute('class'):
                     flag = 0
                 else:
-                    driver.find_element_by_id("DataTables_Table_1_next").click()
+                    driver.execute_script("arguments[0].click();", driver.find_element_by_id("DataTables_Table_1_next"))
+                    # driver.find_element_by_id("DataTables_Table_1_next").click()
                     time.sleep(2)
                     bmo_act_dict[num] = pd.read_html(driver.page_source)[1]
                     num += 1
@@ -101,6 +102,7 @@ class Driver:
                 else:
                     listy.append('Error')
         all_bmo_active_products['pdwCusip'] = listy
+        print(all_bmo_active_products.head())
 
         return all_bmo_active_products
     
