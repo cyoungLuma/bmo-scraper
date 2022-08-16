@@ -102,7 +102,7 @@ class Driver:
                     listy.append('Error')
         all_bmo_active_products['pdwCusip'] = listy
 
-        return bmo_active_products
+        return all_bmo_active_products
     
     def get_nbcss_products(self):
         # Setup for nbc_ss
