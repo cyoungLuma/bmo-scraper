@@ -4,6 +4,9 @@ from bs4 import BeautifulSoup
 from keyring import get_password
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
+# from random import sample
+from time import sleep
+from urllib.error import HTTPError
 from urllib.request import urlopen
 
 
@@ -13,10 +16,34 @@ class BmoScraper:
     def __init__(self, bmo_urls, user, password, host, port, options):
         cxn_string = f"mongodb://{user}:{password}@{host}:{port}/?{options}"
         self.client = MongoClient(cxn_string)
-        self.notes_dict = {
-            note.rsplit('/', 1)[-1]: pd.read_html(note)
-            for note in bmo_urls
-        }
+        self.notes_dict = {}
+        self.errors_dict = {}
+        for note in bmo_urls:
+            try:
+                try:
+                    try:
+                        self.notes_dict[note.rsplit(
+                            '/', 1)[-1]] = pd.read_html(note)
+                        sleep(3)
+                    except HTTPError:
+                        print('HTTP Error: Waiting 10 seconds and trying again'
+                              ' for the current item')
+                        sleep(10)
+                        self.notes_dict[note.rsplit(
+                            '/', 1)[-1]] = pd.read_html(note)
+                        sleep(3)
+                except HTTPError:
+                    print('HTTP Error: Waiting 30 seconds and trying again'
+                          ' for the current item')
+                    sleep(30)
+                    self.notes_dict[note.rsplit('/',
+                                                1)[-1]] = pd.read_html(note)
+                    sleep(3)
+            except HTTPError:
+                message = (f'Note {note} failed to read after 3 attemps.  '
+                           'Logging for investigation.')
+                self.errors_dict[(note, '__init__')] = message
+
         self.bmo_example_fields = pd.read_excel('BMO Examples.xlsx')
         self.pdw_df = self.bmo_example_fields[['PDW Fields']].copy()
         self.skip_cols = pd.Series(['Payment Schedule', 'Portfolio Summary'])
@@ -63,36 +90,57 @@ class BmoScraper:
     def _callBarrierLevelFinal(self):
         for key, val in self.notes_dict.items():
             # Check if right type of note
-            if 'Payment Schedule' in val.keys():
-                # Replace '-' with NaN
-                self.notes_dict[key]['Payment Schedule'].replace('-',
-                                                                 None,
-                                                                 inplace=True,
-                                                                 regex=False)
+            try:
+                if 'Payment Schedule' in val.keys():
+                    # Replace '-' with NaN
+                    self.notes_dict[key]['Payment Schedule'].replace(
+                        '-', None, inplace=True, regex=False)
 
-                # Set filter to first non-null value
-                mask = ~self.notes_dict[key]['Payment Schedule'][
-                    'Autocall Level'].isnull()
+                    # Set filter to first non-null value
+                    mask = ~self.notes_dict[key]['Payment Schedule'][
+                        'Autocall Level'].isnull()
 
-                # Set value in the PDW table
-                self.pdw_df.at[
-                    'productCall.callBarrierLevelFinal', key] = float(
-                        self.notes_dict[key]['Payment Schedule']
-                        ['Autocall Level'].loc[mask].iloc[0].strip('%')) / 100
+                    # Set value in the PDW table
+                    self.pdw_df.at['productCall.callBarrierLevelFinal',
+                                   key] = float(
+                                       self.notes_dict[key]['Payment Schedule']
+                                       ['Autocall Level'].loc[mask].iloc[0].
+                                       strip('%')) / 100
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_callBarrierLevelFinal')] = (message,
+                                                                     val)
 
     # Rule: callObservationDateList
     def _callObservationDateList(self):
         for key, val in self.notes_dict.items():
             # Check if right type of note
-            if 'Payment Schedule' in val.keys():
-                # Add the entire observation date column as a list
-                self.pdw_df.at['productCall.callObservationDateList',
-                               key] = self.notes_dict[key]['Payment Schedule'][
-                                   'Observation Date'].to_list()
+            try:
+                if 'Payment Schedule' in val.keys():
+                    # Add the entire observation date column as a list
+                    self.pdw_df.at[
+                        'productCall.callObservationDateList',
+                        key] = self.notes_dict[key]['Payment Schedule'][
+                            'Observation Date'].to_list()
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_callObservationDateList')] = (message,
+                                                                       val)
 
     # Rule: callObservationFrequency
     def _callObservationFrequency(self):
+
         def check_call_freq(self, dt_days):
+            if 2 <= dt_days <= 5:
+                self.pdw_df.at['productCall.callObservationFrequency',
+                               key] = 'BI_WEEKLY'
+            if 6 <= dt_days <= 7:
+                self.pdw_df.at['productCall.callObservationFrequency',
+                               key] = 'WEEKLY'
             if 28 <= dt_days <= 31:
                 self.pdw_df.at['productCall.callObservationFrequency',
                                key] = 'MONTHLY'
@@ -104,7 +152,10 @@ class BmoScraper:
                                key] = 'DAILY'
             elif 364 <= dt_days <= 366:
                 self.pdw_df.at['productCall.callObservationFrequency',
-                               key] = 'ANUALLY'
+                               key] = 'ANNUALLY'
+            elif 182 <= dt_days <= 184:
+                self.pdw_df.at['productCall.callObservationFrequency',
+                               key] = 'SEMI_ANNUALLY'
             elif 89 <= dt_days <= 92:
                 self.pdw_df.at['productCall.callObservationFrequency',
                                key] = 'QUARTERLY'
@@ -112,83 +163,123 @@ class BmoScraper:
                 self.pdw_df.at['productCall.callObservationFrequency',
                                key] = 'CUSTOM'
 
-        for key, val in self.notes_dict.items():
-            # Check if right type of note
-            if 'Payment Schedule' in val.keys():
-                # Add the entire observation date column as a list
-                dt_diff = pd.to_datetime(
-                    self.notes_dict[key]['Payment Schedule']
-                    ['Observation Date'])
-                dt_diff = dt_diff - dt_diff.shift()
-                dt_days = dt_diff.mean().days
-                check_call_freq(self, dt_days)
+        try:
+            for key, val in self.notes_dict.items():
+                # Check if right type of note
+                if 'Payment Schedule' in val.keys():
+                    # Add the entire observation date column as a list
+                    dt_diff = pd.to_datetime(
+                        self.notes_dict[key]['Payment Schedule']
+                        ['Observation Date'])
+                    dt_diff = dt_diff - dt_diff.shift()
+                    dt_days = dt_diff.mean().days
+                    check_call_freq(self, dt_days)
+        except Exception as e:
+            template = ("An exception of type {0} occurred. "
+                        "Arguments:\n{1!r}")
+            message = template.format(type(e).__name__, e.args)
+            self.errors_dict[(key, '_callObservationFrequency')] = (message,
+                                                                    val)
 
     # Rule: callType
     def _callType(self):
         # Check if right type of note
         for key, val in self.notes_dict.items():
-            if 'Payment Schedule' in val.keys():
-                # Check if all values are the same
-                autocall_series = self.notes_dict[key]['Payment Schedule'][
-                    'Autocall Level'].dropna().reset_index(drop=True)
-                if (autocall_series == autocall_series[0]).all():
-                    # self.pdw_df.at['productCall.callType', key] = 'Autocall'
-                    self.pdw_df.at['productCall.callType', key] = 'AUTO'
-                else:
-                    # self.pdw_df.at['productCall.callType', key] = 'Auto Step'
-                    self.pdw_df.at['productCall.callType',
-                                   key] = 'AUTOCALL_STEP'
+            try:
+                if 'Payment Schedule' in val.keys():
+                    # Check if all values are the same
+                    autocall_series = self.notes_dict[key]['Payment Schedule'][
+                        'Autocall Level'].dropna().reset_index(drop=True)
+                    if (autocall_series == autocall_series[0]).all():
+                        # self.pdw_df.at['productCall.callType', key] = 'Autocall'
+                        self.pdw_df.at['productCall.callType', key] = 'AUTO'
+                    else:
+                        # self.pdw_df.at['productCall.callType', key] = 'Auto Step'
+                        self.pdw_df.at['productCall.callType',
+                                       key] = 'AUTOCALL_STEP'
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_callType')] = (message, val)
 
     # Rule: numberNoCallPeriods
     def _numberNoCallPeriods(self):
         # Check if right type of note
         for key, val in self.notes_dict.items():
-            if 'Payment Schedule' in val.keys():
-                # Filter to NaN + 1
-                self.pdw_df.at['productCall.numberNoCallPeriods', key] = len(
-                    self.notes_dict[key]['Payment Schedule'].loc[
-                        self.notes_dict[key]['Payment Schedule']
-                        ['Autocall Level'].isna()]) + 1
+            try:
+                if 'Payment Schedule' in val.keys():
+                    # Filter to NaN + 1
+                    self.pdw_df.at[
+                        'productCall.numberNoCallPeriods',
+                        key] = len(self.notes_dict[key]['Payment Schedule'].
+                                   loc[self.notes_dict[key]['Payment Schedule']
+                                       ['Autocall Level'].isna()]) + 1
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_numberNoCallPeriods')] = (message,
+                                                                   val)
 
     # Rule: currency
     def _currency(self):
         # Check if right type of note
         for key, val in self.notes_dict.items():
-            if 'Product Details' in val.keys():
-                if 'Currency' in val.keys():
-                    # Get currency column
-                    self.pdw_df.at['productGeneral.currency',
-                                   key] = self.notes_dict[key][
-                                       'Product Details']['Currency'][0]
+            try:
+                if 'Product Details' in val.keys():
+                    if 'Currency' in val['Product Details'].columns:
+                        # Get currency column
+                        self.pdw_df.at['productGeneral.currency',
+                                       key] = self.notes_dict[key][
+                                           'Product Details']['Currency'][0]
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_currency')] = (message, val)
 
     # Rule: cusip
     def _cusip(self):
         # Check if right type of note
         for key, val in self.notes_dict.items():
-            # Get JHN column and correct length
-            if 'Product Details' in val.keys():
-                if 'JHN Code' in val['Product Details'].columns:
-                    jhn = self.notes_dict[key]['Product Details']['JHN Code'][
-                        0]
-                    if len(jhn) == 7:
-                        self.pdw_df.at['productGeneral.cusip',
-                                       key] = 'CA' + jhn
-                    elif len(jhn) == 8:
-                        self.pdw_df.at['productGeneral.cusip', key] = 'C' + jhn
-                    else:
-                        self.pdw_df.at['productGeneral.cusip', key] = jhn
+            try:
+                # Get JHN column and correct length
+                if 'Product Details' in val.keys():
+                    if 'JHN Code' in val['Product Details'].columns:
+                        jhn = self.notes_dict[key]['Product Details'][
+                            'JHN Code'][0]
+                        if len(jhn) == 7:
+                            self.pdw_df.at['productGeneral.cusip',
+                                           key] = 'CA' + jhn
+                        elif len(jhn) == 8:
+                            self.pdw_df.at['productGeneral.cusip',
+                                           key] = 'C' + jhn
+                        else:
+                            self.pdw_df.at['productGeneral.cusip', key] = jhn
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_cusip')] = (message, val)
 
     # Rule: issueDate
     def _issueDate(self):
         # Check if right type of note
         for key, val in self.notes_dict.items():
-            # Get date in right format
-            if 'Product Details' in val.keys():
-                if 'Issue Date' in val['Product Details'].columns:
-                    self.pdw_df.at[
-                        'productGeneral.issueDate', key] = pd.to_datetime(
-                            self.notes_dict[key]['Product Details']
-                            ['Issue Date']).dt.strftime(r'%m/%d/%Y')[0]
+            try:
+                # Get date in right format
+                if 'Product Details' in val.keys():
+                    if 'Issue Date' in val['Product Details'].columns:
+                        self.pdw_df.at[
+                            'productGeneral.issueDate', key] = pd.to_datetime(
+                                self.notes_dict[key]['Product Details']
+                                ['Issue Date']).dt.strftime(r'%m/%d/%Y')[0]
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_issueDate')] = (message, val)
 
     # Rule: issuer
     def _issuer(self):
@@ -200,24 +291,37 @@ class BmoScraper:
     def _maturityDate(self):
         # Check if right type of note
         for key, val in self.notes_dict.items():
-            # Get date in right format
-            if 'Product Details' in val.keys():
-                if 'Maturity Date' in val['Product Details'].columns:
-                    self.pdw_df.at[
-                        'productGeneral.maturityDate', key] = pd.to_datetime(
-                            self.notes_dict[key]['Product Details']
-                            ['Maturity Date']).dt.strftime(r'%m/%d/%Y')[0]
+            try:
+                # Get date in right format
+                if 'Product Details' in val.keys():
+                    if 'Maturity Date' in val['Product Details'].columns:
+                        self.pdw_df.at[
+                            'productGeneral.maturityDate',
+                            key] = pd.to_datetime(
+                                self.notes_dict[key]['Product Details']
+                                ['Maturity Date']).dt.strftime(r'%m/%d/%Y')[0]
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_maturityDate')] = (message, val)
 
     # Rule: productName
     def _productName(self):
         # Get title of webpages
-        for key in self.notes_dict.keys():
-            soup = BeautifulSoup(urlopen('https://www.bmonotes.com/Note/' +
-                                         key),
-                                 features="lxml")
-            self.pdw_df.at['productGeneral.productName',
-                           key] = str(soup.find_all('h1')[1]).replace(
-                               r'<h1>', '').replace(r'</h1>', '').strip()
+        try:
+            for key in self.notes_dict.keys():
+                soup = BeautifulSoup(urlopen('https://www.bmonotes.com/Note/' +
+                                             key),
+                                     features="lxml")
+                self.pdw_df.at['productGeneral.productName',
+                               key] = str(soup.find_all('h1')[1]).replace(
+                                   r'<h1>', '').replace(r'</h1>', '').strip()
+        except Exception as e:
+            template = ("An exception of type {0} occurred. "
+                        "Arguments:\n{1!r}")
+            message = template.format(type(e).__name__, e.args)
+            self.errors_dict[(key, '_productName')] = message
 
     # Rule: stage
     def _stage(self):
@@ -236,78 +340,132 @@ class BmoScraper:
     def _tenorFinal(self):
         # Get Term value
         for key, val in self.notes_dict.items():
-            if 'Product Details' in val.keys():
-                if 'Term' in val['Product Details'].columns:
-                    self.pdw_df.at['productGeneral.tenorFinal', key] = float(
-                        self.notes_dict[key]['Product Details']['Term']
-                        [0].split()[0])
+            try:
+                if 'Product Details' in val.keys():
+                    if 'Term' in val['Product Details'].columns:
+                        self.pdw_df.at['productGeneral.tenorFinal',
+                                       key] = float(self.notes_dict[key]
+                                                    ['Product Details']['Term']
+                                                    [0].split()[0])
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_tenorFinal')] = (message, val)
 
     # Rule: tenorUnit
     def _tenorUnit(self):
         # Get Term unit
         for key, val in self.notes_dict.items():
-            if 'Product Details' in val.keys():
-                if 'Term' in val['Product Details'].columns:
-                    self.pdw_df.at[
-                        'productGeneral.tenorUnit',
-                        key] = self.notes_dict[key]['Product Details']['Term'][
-                            0].split()[1].upper()
+            try:
+                if 'Product Details' in val.keys():
+                    if 'Term' in val['Product Details'].columns:
+                        self.pdw_df.at[
+                            'productGeneral.tenorUnit',
+                            key] = self.notes_dict[key]['Product Details'][
+                                'Term'][0].split()[1].upper()
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_tenorUnit')] = (message, val)
 
     # Rule: underlierList
     def _underlierList(self):
-        # Get value from table
-        for key, val in self.notes_dict.items():
-            if 'Product Details' in val.keys():
-                if 'Linked To' in val['Product Details'].columns:
-                    self.pdw_df.at['productGeneral.underlierList',
-                                   key] = self.notes_dict[key][
-                                       'Product Details']['Linked To'][0]
+        try:
+            # Get value from table
+            for key, val in self.notes_dict.items():
+                if 'Product Details' in val.keys():
+                    if 'Linked To' in val['Product Details'].columns:
+                        self.pdw_df.at['productGeneral.underlierList',
+                                       key] = self.notes_dict[key][
+                                           'Product Details']['Linked To'][0]
+        except Exception as e:
+            template = ("An exception of type {0} occurred. "
+                        "Arguments:\n{1!r}")
+            message = template.format(type(e).__name__, e.args)
+            self.errors_dict[(key, '_underlierList')] = (message, val)
 
     # Rule: underlierweight
     def _underlierweight(self):
         # Check for portfolio summary section and get weights
         for key, val in self.notes_dict.items():
-            if 'Portfolio Summary' in val.keys():
-                underlier_weight = self.notes_dict[key][
-                    'Portfolio Summary'].iloc[:-1, :][
-                        'Share Weight'].str.replace('%',
-                                                    '').astype(float) / 100
-                self.pdw_df.at['productGeneral.underlierList.underlierweight',
-                               key] = underlier_weight.to_list()
+            try:
+                if 'Portfolio Summary' in val.keys():
+                    underlier_weight = self.notes_dict[key][
+                        'Portfolio Summary'].iloc[:-1, :][
+                            'Share Weight'].str.replace('%',
+                                                        '').astype(float) / 100
+                    self.pdw_df.at[
+                        'productGeneral.underlierList.underlierweight',
+                        key] = underlier_weight.to_list()
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_underlierweight')] = (message, val)
 
     # Rule: upsideParticipationRateFinal
     def _upsideParticipationRateFinal(self):
         # Get value from table & convert to float
-        for key, val in self.notes_dict.items():
-            if 'Product Details' in val.keys():
-                if 'Upside Participation' in val['Product Details'].columns:
-                    self.pdw_df.at[
-                        'productGrowth.upsideParticipationRateFinal',
-                        key] = float(self.notes_dict[key]['Product Details']
-                                     ['Upside Participation'][0].replace(
-                                         '%', '')) / 100
-
-    # Rule: downsideType
-    def _downsideType(self):
-        # If exists, static
-        for key, val in self.notes_dict.items():
-            if 'Product Details' in val.keys():
-                if 'Barrier Protection' in val['Product Details'].columns:
-                    self.pdw_df.at['productProtection.downsideType',
-                                   key] = 'BARRIER'
+        try:
+            for key, val in self.notes_dict.items():
+                if 'Product Details' in val.keys():
+                    if 'Upside Participation' in val[
+                            'Product Details'].columns:
+                        self.pdw_df.at[
+                            'productGrowth.upsideParticipationRateFinal',
+                            key] = float(
+                                self.notes_dict[key]['Product Details']
+                                ['Upside Participation'][0].replace('%',
+                                                                    '')) / 100
+                    elif 'Excess Participation' in val[
+                            'Product Details'].columns:
+                        self.pdw_df.at[
+                            'productGrowth.upsideParticipationRateFinal',
+                            key] = float(
+                                self.notes_dict[key]['Product Details']
+                                ['Excess Participation'][0].replace('%',
+                                                                    '')) / 100
+        except Exception as e:
+            template = ("An exception of type {0} occurred. "
+                        "Arguments:\n{1!r}")
+            message = template.format(type(e).__name__, e.args)
+            self.errors_dict[(key,
+                              '_upsideParticipationRateFinal')] = (message,
+                                                                   val)
 
     # Rule: principalBarrierLevelFinal
     def _principalBarrierLevelFinal(self):
         # Get value from table & convert to float
         for key, val in self.notes_dict.items():
-            if 'Product Details' in val.keys():
-                if 'Barrier Protection' in val['Product Details'].columns:
-                    self.pdw_df.at[
-                        'productProtection.principalBarrierLevelFinal',
-                        key] = float(self.notes_dict[key]['Product Details']
-                                     ['Barrier Protection'][0].replace(
-                                         '-', '').replace('%',
-                                                          '').strip()) / 100
+            try:
+                if 'Product Details' in val.keys():
+                    if 'Barrier Protection' in val['Product Details'].columns:
+                        self.pdw_df.at[
+                            'productProtection.principalBarrierLevelFinal',
+                            key] = float(
+                                self.notes_dict[key]['Product Details']
+                                ['Barrier Protection'][0].replace(
+                                    '-', '').replace('%', '').strip()) / 100
+                        self.pdw_df.at['productProtection.downsideType',
+                                       key] = 'BARRIER'
+                    elif 'Buffer Protection' in val['Product Details'].columns:
+                        self.pdw_df.at[
+                            'productProtection.principalBufferLevelFinal',
+                            key] = float(
+                                self.notes_dict[key]['Product Details']
+                                ['Buffer Protection'][0].replace(
+                                    '-', '').replace('%', '').strip()) / 100
+                        self.pdw_df.at['productProtection.downsideType',
+                                       key] = 'BUFFER'
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key,
+                                  '_principalBarrierLevelFinal')] = (message,
+                                                                     val)
 
     # Rule: countryDistribution
     def _countryDistribution(self):
@@ -319,70 +477,226 @@ class BmoScraper:
     # Rule: paymentBarrierFinal
     def _paymentBarrierFinal(self):
         # Grab field from table & convert to float
-        for key, val in self.notes_dict.items():
-            if 'Indicative Return' in val.keys():
-                if 'Coupon Knock-Out Level  (Basket Return)' in val[
-                        'Indicative Return'].columns:
-                    self.pdw_df.at[
-                        'productYield.paymentBarrierFinal', key] = float(
-                            self.notes_dict[key]['Indicative Return']
-                            ['Coupon Knock-Out Level  (Basket Return)'][0].
-                            replace('-', '').replace('%', '').strip()) / 100
+        try:
+            for key, val in self.notes_dict.items():
+                if 'Product Details ' in val.keys():
+                    if 'Coupon Knock-Out Level' in val[
+                            'Product Details '].columns:
+                        self.pdw_df.at[
+                            'productYield.paymentBarrierFinal', key] = float(
+                                self.notes_dict[key]['Indicative Return']
+                                ['Coupon Knock-Out Level'][0].replace(
+                                    '-', '').replace('%', '').strip()) / 100
+                    elif 'Coupon Knock-In Level' in val[
+                            'Product Details '].columns:
+                        self.pdw_df.at[
+                            'productYield.paymentBarrierFinal', key] = float(
+                                self.notes_dict[key]['Indicative Return']
+                                ['Coupon Knock-In Level'][0].replace(
+                                    '-', '').replace('%', '').strip()) / 100
+        except Exception as e:
+            template = ("An exception of type {0} occurred. "
+                        "Arguments:\n{1!r}")
+            message = template.format(type(e).__name__, e.args)
+            self.errors_dict[(key, '_paymentBarrierFinal')] = (message, val)
 
     # Rule: paymentDateList
     def _paymentDateList(self):
         # Add column as list
         for key, val in self.notes_dict.items():
-            if 'Payment Schedule' in val.keys():
-                if 'Coupon Payment Date' in val['Payment Schedule'].columns:
-                    self.pdw_df.at[
-                        'productYield.paymentDateList',
-                        key] = self.notes_dict[key]['Payment Schedule'][
-                            'Coupon Payment Date'].to_list()
+            try:
+                if 'Payment Schedule' in val.keys():
+                    if 'Coupon Payment Date' in val[
+                            'Payment Schedule'].columns:
+                        self.pdw_df.at[
+                            'productYield.paymentDateList',
+                            key] = self.notes_dict[key]['Payment Schedule'][
+                                'Coupon Payment Date'].to_list()
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_paymentDateList')] = (message, val)
 
     # Rule: paymentEvaluationFrequencyFinal
     def _paymentEvaluationFrequencyFinal(self):
         # If exists, static
         for key, val in self.notes_dict.items():
-            if 'Product Details' in val.keys():
-                if 'Pay Frequency' in val['Product Details'].columns:
-                    self.pdw_df.at[
-                        'productYield.paymentEvaluationFrequencyFinal',
-                        key] = self.notes_dict[key]['Product Details'][
-                            'Pay Frequency'][0].upper()
+            try:
+                if 'Product Details' in val.keys():
+                    if 'Pay Frequency' in val['Product Details'].columns:
+                        self.pdw_df.at[
+                            'productYield.paymentEvaluationFrequencyFinal',
+                            key] = self.notes_dict[key]['Product Details'][
+                                'Pay Frequency'][0].upper()
+                        self.pdw_df.at[
+                            'productYield.paymentFrequency',
+                            key] = self.notes_dict[key]['Product Details'][
+                                'Pay Frequency'][0].upper()
+                    elif 'Coupon Frequency' in val['Product Details'].columns:
+                        self.pdw_df.at[
+                            'productYield.paymentFrequency',
+                            key] = self.notes_dict[key]['Product Details'][
+                                'Coupon Frequency'][0].upper()
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_paymentEvaluationFrequencyFinal')] = (
+                    message, val)
 
     # Rule: paymentRatePerAnnumFinal
     def _paymentRatePerAnnumFinal(self):
         # If exists, static & convert % to float
         for key, val in self.notes_dict.items():
-            if 'Product Details' in val.keys():
-                if 'Contingent Coupon' in val['Product Details'].columns:
-                    self.pdw_df.at['productYield.paymentRatePerAnnumFinal',
-                                   key] = float(
-                                       self.notes_dict[key]['Product Details']
-                                       ['Contingent Coupon'][0].replace(
-                                           '-', '').replace('%',
-                                                            '').strip()) / 100
+            try:
+                if 'Product Details' in val.keys():
+                    if 'Contingent Coupon' in val['Product Details'].columns:
+                        self.pdw_df.at[
+                            'productYield.paymentRatePerAnnumFinal',
+                            key] = float(
+                                self.notes_dict[key]['Product Details']
+                                ['Contingent Coupon'][0].replace(
+                                    '-', '').replace('%', '').strip()) / 100
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key,
+                                  '_paymentRatePerAnnumFinal')] = (message,
+                                                                   val)
+
+    # Rule: paymentRatePerPeriodFinal
+    def _paymentRatePerPeriodFinal(self):
+        # Take previous rule results to calculate this if exists
+        for col in self.pdw_df.columns:
+            try:
+                cond1 = self.pdw_df.at['productYield.paymentRatePerAnnumFinal',
+                                       col] is not None
+                cond2 = self.pdw_df.at['productYield.paymentFrequency',
+                                       col] is not None
+                if cond1 and cond2:
+                    self.pdw_df.at['productYield.paymentRatePerPeriodFinal',
+                                   col] = str(self.pdw_df.at[
+                                       'productYield.paymentRatePerAnnumFinal',
+                                       col]) + ' / ' + self.pdw_df.at[
+                                           'productYield.paymentFrequency',
+                                           col]
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(col, 'paymentRatePerPeriodFinal')] = message
 
     # Rule: fundservID
     def _fundservID(self):
         # If exists, static
         for key, val in self.notes_dict.items():
-            if 'Product Details' in val.keys():
-                if 'JHN Code' in val['Product Details'].columns:
-                    self.pdw_df.at['productGeneral.fundservID',
-                                   key] = self.notes_dict[key][
-                                       'Product Details']['JHN Code'][0]
+            try:
+                if 'Product Details' in val.keys():
+                    if 'JHN Code' in val['Product Details'].columns:
+                        self.pdw_df.at['productGeneral.fundservID',
+                                       key] = self.notes_dict[key][
+                                           'Product Details']['JHN Code'][0]
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_fundservID')] = (message, val)
 
     # Rule: Mark to Market Price
     def _mark_to_market_price(self):
         # If exists, static & replace $, convert to float
         for key, val in self.notes_dict.items():
-            if 'Current Status' in val.keys():
-                if 'Current Bid Price' in val['Current Status'].columns:
-                    self.pdw_df.at['Mark to Market Price', key] = float(
-                        self.notes_dict[key]['Current Status']
-                        ['Current Bid Price'][0].replace('$', ''))
+            try:
+                if 'Current Status' in val.keys():
+                    if 'Current Bid Price' in val['Current Status'].columns:
+                        if val['Current Status']['Current Bid Price'][0] != '-':
+                            self.pdw_df.at[
+                                'Mark to Market Price', key] = float(
+                                    self.notes_dict[key]['Current Status']
+                                    ['Current Bid Price'][0].replace('$', ''))
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_mark_to_market_price')] = (message,
+                                                                    val)
+
+    # Rule: minimumReturnFinal
+    def _minimumReturnFinal(self):
+        for key, val in self.notes_dict.items():
+            try:
+                if 'Product Details' in val.keys():
+                    if 'Minimum Payment' in val['Product Details'].columns:
+                        self.pdw_df.at[
+                            'productGrowth.minimumReturnFinal', key] = float(
+                                self.notes_dict[key]['Product Details']
+                                ['Minimum Payment'][0].replace('$', ''))
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_minimumReturnFinal')] = (message, val)
+
+    # Rule: minimumReturnFinal
+    def _tradeDate(self):
+        for key, val in self.notes_dict.items():
+            try:
+                if 'Product Details' in val.keys():
+                    if 'Available Until' in val['Product Details'].columns:
+                        self.pdw_df.at[
+                            'productGeneral.tradeDate', key] = pd.to_datetime(
+                                self.notes_dict[key]['Product Details']
+                                ['Available Until']).dt.strftime(
+                                    r'%m/%d/%Y')[0]
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_tradeDate')] = (message, val)
+
+    # Rule: callPremiumFinal
+    def _callPremiumFinal(self):
+        for key, val in self.notes_dict.items():
+            try:
+                if 'Product Details' in val.keys():
+                    if 'AutoCall Coupon (Next Call Date)' in val[
+                            'Product Details'].columns:
+                        self.pdw_df.at[
+                            'productCall.callPremiumFinal', key] = float(
+                                self.notes_dict[key]['Product Details']
+                                ['AutoCall Coupon (Next Call Date)']
+                                [0].replace('-', '').replace('%',
+                                                             '').strip()) / 100
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_callPremiumFinal')] = (message, val)
+
+    # Rule: putLeverageFinal
+    def _putLeverageFinal(self):
+        for key, val in self.notes_dict.items():
+            try:
+                if 'Product Details' in val.keys():
+                    if 'Downside Participation' in val[
+                            'Product Details'].columns:
+                        self.pdw_df.at[
+                            'productProtection.putLeverageFinal', key] = float(
+                                self.notes_dict[key]['Product Details']
+                                ['Downside Participation'][0].replace(
+                                    '-', '').replace('%', '').strip()) / 100
+                        if self.pdw_df.at['productCall.callPremiumFinal',
+                                          key] > 1:
+                            self.pdw_df.at[
+                                'productProtection.downsideType'] = 'GEARED_BUFFER'
+
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_putLeverageFinal')] = (message, val)
 
     # Run all rules
     def run_all_rules(self):
@@ -408,15 +722,19 @@ class BmoScraper:
         self._underlierList()
         self._underlierweight()
         self._upsideParticipationRateFinal()
-        self._downsideType()
         self._principalBarrierLevelFinal()
         self._countryDistribution()
         self._paymentBarrierFinal()
         self._paymentDateList()
         self._paymentEvaluationFrequencyFinal()
         self._paymentRatePerAnnumFinal()
+        self._paymentRatePerPeriodFinal()
         self._fundservID()
         self._mark_to_market_price()
+        self._minimumReturnFinal()
+        self._tradeDate()
+        self._callPremiumFinal()
+        self._putLeverageFinal()
 
     def reset_pdw_indices(self):
         # Reset indices to prepare to JSON
@@ -445,7 +763,7 @@ class BmoScraper:
 
     def insert_pdw_json_to_pdw(self):
         # Convert to JSON & set up cxn
-        self.result = []
+        self.result = {}
         db = self.client['test-masking-dev']
         PdwProductCore = db.PdwProductCore
         for col in self.pdw_df_dict.keys():
@@ -469,10 +787,11 @@ class BmoScraper:
 
             # Insert into DB
             try:
-                self.result.append(
-                    (col, PdwProductCore.insert_one(pdw_insert)))
+                self.result[col] = (PdwProductCore.insert_one(pdw_insert),
+                                    pdw_insert)
             except DuplicateKeyError:
-                self.result.append((col, 'Product exists'))
+                self.result[col] = ('Product exists', pdw_insert)
+            self.result[col] = pdw_insert
 
     def write_to_pdw(self):
         # The writing process as one method
@@ -482,9 +801,13 @@ class BmoScraper:
 
 
 # %% Params
-bmo_urls = [
+# with open('urls_to_pdw.txt') as f:
+#     bmo_urls = f.read().splitlines()
+# bmo_urls_sample = sample(bmo_urls, 50)
+bmo_urls_sample = [
     'https://www.bmonotes.com/Note/JHN7482',
-    'https://www.bmonotes.com/Note/JHN15954'
+    'https://www.bmonotes.com/Note/JHN15954',
+    'https://www.bmonotes.com/Note/JHN15093',
 ]
 user = "skimble"
 password = get_password('docdb_preprod', user)
@@ -494,12 +817,17 @@ options = ("tls=true&tlsAllowInvalidCertificates=true&replicaSet=rs0&"
            "readPreference=secondaryPreferred&retryWrites=false")
 
 # %% Add params to object
-bmo = BmoScraper(bmo_urls, user, password, host, port, options)
+bmo = BmoScraper(bmo_urls_sample, user, password, host, port, options)
+
+# %% Run all rules
 bmo.run_all_rules()
 
-# %% Final results
+# %% View Final results
 pd.set_option('display.max_rows', 200)
 bmo.pdw_df
+
+# %% View any errors that were caught
+bmo.errors_dict
 
 # %% Write to PDW & view status
 bmo.write_to_pdw()
