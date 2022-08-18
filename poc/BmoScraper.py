@@ -92,20 +92,22 @@ class BmoScraper:
             # Check if right type of note
             try:
                 if 'Payment Schedule' in val.keys():
-                    # Replace '-' with NaN
-                    self.notes_dict[key]['Payment Schedule'].replace(
-                        '-', None, inplace=True, regex=False)
+                    if 'Autocall Level' in self.notes_dict[key][
+                            'Payment Schedule'].columns:
+                        # Replace '-' with NaN
+                        self.notes_dict[key]['Payment Schedule'].replace(
+                            '-', None, inplace=True, regex=False)
 
-                    # Set filter to first non-null value
-                    mask = ~self.notes_dict[key]['Payment Schedule'][
-                        'Autocall Level'].isnull()
+                        # Set filter to first non-null value
+                        mask = ~self.notes_dict[key]['Payment Schedule'][
+                            'Autocall Level'].isnull()
 
-                    # Set value in the PDW table
-                    self.pdw_df.at['productCall.callBarrierLevelFinal',
-                                   key] = float(
-                                       self.notes_dict[key]['Payment Schedule']
-                                       ['Autocall Level'].loc[mask].iloc[0].
-                                       strip('%')) / 100
+                        # Set value in the PDW table
+                        self.pdw_df.at[
+                            'productCall.callBarrierLevelFinal',
+                            key] = float(self.notes_dict[key]
+                                         ['Payment Schedule']['Autocall Level']
+                                         .loc[mask].iloc[0].strip('%')) / 100
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -119,11 +121,12 @@ class BmoScraper:
             # Check if right type of note
             try:
                 if 'Payment Schedule' in val.keys():
-                    # Add the entire observation date column as a list
-                    self.pdw_df.at[
-                        'productCall.callObservationDateList',
-                        key] = self.notes_dict[key]['Payment Schedule'][
-                            'Observation Date'].to_list()
+                    if 'Observation Date' in val['Payment Schedule'].columns:
+                        # Add the entire observation date column as a list
+                        self.pdw_df.at[
+                            'productCall.callObservationDateList',
+                            key] = self.notes_dict[key]['Payment Schedule'][
+                                'Observation Date'].to_list()
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -167,13 +170,14 @@ class BmoScraper:
             for key, val in self.notes_dict.items():
                 # Check if right type of note
                 if 'Payment Schedule' in val.keys():
-                    # Add the entire observation date column as a list
-                    dt_diff = pd.to_datetime(
-                        self.notes_dict[key]['Payment Schedule']
-                        ['Observation Date'])
-                    dt_diff = dt_diff - dt_diff.shift()
-                    dt_days = dt_diff.mean().days
-                    check_call_freq(self, dt_days)
+                    if 'Observation Date' in val['Payment Schedule'].columns:
+                        # Add the entire observation date column as a list
+                        dt_diff = pd.to_datetime(
+                            self.notes_dict[key]['Payment Schedule']
+                            ['Observation Date'])
+                        dt_diff = dt_diff - dt_diff.shift()
+                        dt_days = dt_diff.mean().days
+                        check_call_freq(self, dt_days)
         except Exception as e:
             template = ("An exception of type {0} occurred. "
                         "Arguments:\n{1!r}")
@@ -187,16 +191,19 @@ class BmoScraper:
         for key, val in self.notes_dict.items():
             try:
                 if 'Payment Schedule' in val.keys():
-                    # Check if all values are the same
-                    autocall_series = self.notes_dict[key]['Payment Schedule'][
-                        'Autocall Level'].dropna().reset_index(drop=True)
-                    if (autocall_series == autocall_series[0]).all():
-                        # self.pdw_df.at['productCall.callType', key] = 'Autocall'
-                        self.pdw_df.at['productCall.callType', key] = 'AUTO'
-                    else:
-                        # self.pdw_df.at['productCall.callType', key] = 'Auto Step'
-                        self.pdw_df.at['productCall.callType',
-                                       key] = 'AUTOCALL_STEP'
+                    if 'Autocall Level' in val['Payment Schedule'].columns:
+                        # Check if all values are the same
+                        autocall_series = self.notes_dict[
+                            key]['Payment Schedule']['Autocall Level'].dropna(
+                            ).reset_index(drop=True)
+                        if (autocall_series == autocall_series[0]).all():
+                            # self.pdw_df.at['productCall.callType', key] = 'Autocall'
+                            self.pdw_df.at['productCall.callType',
+                                           key] = 'AUTO'
+                        else:
+                            # self.pdw_df.at['productCall.callType', key] = 'Auto Step'
+                            self.pdw_df.at['productCall.callType',
+                                           key] = 'AUTOCALL_STEP'
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -209,12 +216,13 @@ class BmoScraper:
         for key, val in self.notes_dict.items():
             try:
                 if 'Payment Schedule' in val.keys():
-                    # Filter to NaN + 1
-                    self.pdw_df.at[
-                        'productCall.numberNoCallPeriods',
-                        key] = len(self.notes_dict[key]['Payment Schedule'].
-                                   loc[self.notes_dict[key]['Payment Schedule']
-                                       ['Autocall Level'].isna()]) + 1
+                    if 'Autocall Level' in val['Payment Schedule'].columns:
+                        # Filter to NaN + 1
+                        self.pdw_df.at[
+                            'productCall.numberNoCallPeriods', key] = len(
+                                self.notes_dict[key]['Payment Schedule'].loc[
+                                    self.notes_dict[key]['Payment Schedule']
+                                    ['Autocall Level'].isna()]) + 1
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -392,13 +400,14 @@ class BmoScraper:
         for key, val in self.notes_dict.items():
             try:
                 if 'Portfolio Summary' in val.keys():
-                    underlier_weight = self.notes_dict[key][
-                        'Portfolio Summary'].iloc[:-1, :][
-                            'Share Weight'].str.replace('%',
-                                                        '').astype(float) / 100
-                    self.pdw_df.at[
-                        'productGeneral.underlierList.underlierweight',
-                        key] = underlier_weight.to_list()
+                    if 'Share Weight' in val['Portfolio Summary'].columns:
+                        underlier_weight = val['Portfolio Summary'].loc[
+                            val['Portfolio Summary']['Share Weight'].str.
+                            contains('%'), 'Share Weight'].str.replace(
+                                '%', '').astype(float) / 100
+                        self.pdw_df.at[
+                            'productGeneral.underlierList.underlierweight',
+                            key] = underlier_weight.to_list()
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -669,6 +678,10 @@ class BmoScraper:
                                 ['AutoCall Coupon (Next Call Date)']
                                 [0].replace('-', '').replace('%',
                                                              '').strip()) / 100
+                        if self.pdw_df.at['productCall.callPremiumFinal',
+                                          key] > 1:
+                            self.pdw_df.at[
+                                'productProtection.downsideType'] = 'GEARED_BUFFER'
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -687,10 +700,6 @@ class BmoScraper:
                                 self.notes_dict[key]['Product Details']
                                 ['Downside Participation'][0].replace(
                                     '-', '').replace('%', '').strip()) / 100
-                        if self.pdw_df.at['productCall.callPremiumFinal',
-                                          key] > 1:
-                            self.pdw_df.at[
-                                'productProtection.downsideType'] = 'GEARED_BUFFER'
 
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
@@ -808,8 +817,10 @@ bmo_urls_sample = [
     'https://www.bmonotes.com/Note/JHN7482',
     'https://www.bmonotes.com/Note/JHN15954',
     'https://www.bmonotes.com/Note/JHN15093',
+    'https://www.bmonotes.com/Note/JHN2058',
+    'https://www.bmonotes.com/Note/JHN15992',
 ]
-user = "skimble"
+user = 'skimble'
 password = get_password('docdb_preprod', user)
 host = "dev-documentdb.cluster-cb6kajicuplh.us-east-1.docdb.amazonaws.com"
 port = "27017"
