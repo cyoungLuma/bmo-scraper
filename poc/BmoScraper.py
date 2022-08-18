@@ -1,7 +1,7 @@
 # %% Libs
 import pandas as pd
 from bs4 import BeautifulSoup
-from keyring import get_password
+# from keyring import get_password
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
 # from random import sample
@@ -133,7 +133,6 @@ class BmoScraper:
 
     # Rule: callObservationFrequency
     def _callObservationFrequency(self):
-
         def check_call_freq(self, dt_days):
             if 2 <= dt_days <= 5:
                 self.pdw_df.at['productCall.callObservationFrequency',
@@ -809,8 +808,8 @@ bmo_urls_sample = [
     'https://www.bmonotes.com/Note/JHN15954',
     'https://www.bmonotes.com/Note/JHN15093',
 ]
-user = "skimble"
-password = get_password('docdb_preprod', user)
+user = ""
+password = ""
 host = "dev-documentdb.cluster-cb6kajicuplh.us-east-1.docdb.amazonaws.com"
 port = "27017"
 options = ("tls=true&tlsAllowInvalidCertificates=true&replicaSet=rs0&"
