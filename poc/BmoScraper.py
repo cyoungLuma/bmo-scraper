@@ -811,6 +811,7 @@ class BmoScraper:
         self._tradeDate()
         self._callPremiumFinal()
         self._putLeverageFinal()
+        self._extendibleNote()
 
     def reset_pdw_indices(self):
         # Reset indices to prepare to JSON
