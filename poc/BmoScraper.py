@@ -104,10 +104,10 @@ class BmoScraper:
 
                         # Set value in the PDW table
                         self.pdw_df.at[
-                            'productCall.callBarrierLevelFinal',
-                            key] = float(self.notes_dict[key]
-                                         ['Payment Schedule']['Autocall Level']
-                                         .loc[mask].iloc[0].strip('%')) / 100
+                            'productCall.callBarrierLevelFinal', key] = float(
+                                self.notes_dict[key]['Payment Schedule']
+                                ['Autocall Level'].loc[mask].iloc[0].strip(
+                                    '%').replace(" ", "")) / 100
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -125,8 +125,10 @@ class BmoScraper:
                         # Add the entire observation date column as a list
                         self.pdw_df.at[
                             'productCall.callObservationDateList',
-                            key] = self.notes_dict[key]['Payment Schedule'][
-                                'Observation Date'].to_list()
+                            key] = pd.to_datetime(
+                                self.notes_dict[key]['Payment Schedule']
+                                ['Observation Date']).dt.strftime(
+                                    r'%m/%d/%Y').to_list()
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -426,16 +428,16 @@ class BmoScraper:
                             'productGrowth.upsideParticipationRateFinal',
                             key] = float(
                                 self.notes_dict[key]['Product Details']
-                                ['Upside Participation'][0].replace('%',
-                                                                    '')) / 100
+                                ['Upside Participation'][0].replace(
+                                    '-', '').replace('%', '')) / 100
                     elif 'Excess Participation' in val[
                             'Product Details'].columns:
                         self.pdw_df.at[
                             'productGrowth.upsideParticipationRateFinal',
                             key] = float(
                                 self.notes_dict[key]['Product Details']
-                                ['Excess Participation'][0].replace('%',
-                                                                    '')) / 100
+                                ['Excess Participation'][0].replace(
+                                    '-', '').replace('%', '')) / 100
         except Exception as e:
             template = ("An exception of type {0} occurred. "
                         "Arguments:\n{1!r}")
@@ -448,33 +450,44 @@ class BmoScraper:
     def _principalBarrierLevelFinal(self):
         # Get value from table & convert to float
         for key, val in self.notes_dict.items():
-            try:
-                if 'Product Details' in val.keys():
-                    if 'Barrier Protection' in val['Product Details'].columns:
-                        self.pdw_df.at[
-                            'productProtection.principalBarrierLevelFinal',
-                            key] = float(
-                                self.notes_dict[key]['Product Details']
-                                ['Barrier Protection'][0].replace(
-                                    '-', '').replace('%', '').strip()) / 100
-                        self.pdw_df.at['productProtection.downsideType',
-                                       key] = 'BARRIER'
-                    elif 'Buffer Protection' in val['Product Details'].columns:
-                        self.pdw_df.at[
-                            'productProtection.principalBufferLevelFinal',
-                            key] = float(
-                                self.notes_dict[key]['Product Details']
-                                ['Buffer Protection'][0].replace(
-                                    '-', '').replace('%', '').strip()) / 100
-                        self.pdw_df.at['productProtection.downsideType',
-                                       key] = 'BUFFER'
-            except Exception as e:
-                template = ("An exception of type {0} occurred. "
-                            "Arguments:\n{1!r}")
-                message = template.format(type(e).__name__, e.args)
-                self.errors_dict[(key,
-                                  '_principalBarrierLevelFinal')] = (message,
-                                                                     val)
+            # try:
+            # These can be negative!
+            if 'Product Details' in val.keys():
+                if 'Barrier Protection' in val['Product Details'].columns:
+                    barrier_val = float(self.notes_dict[key]['Product Details']
+                                        ['Barrier Protection'][0].replace(
+                                            '%', '').replace(" ", "")) / 100
+                    self.pdw_df.at[
+                        'productProtection.principalBarrierLevelFinal',
+                        key] = barrier_val + 1
+                    self.pdw_df.at['productProtection.protectionLevel',
+                                   key] = barrier_val * -1
+                    self.pdw_df.at['productProtection.downsideType',
+                                   key] = 'BARRIER'
+                    self.pdw_df.at['productProtection.putLeverageFinal',
+                                   key] = 1
+                    self.pdw_df.at['productProtection.putStrikeFinal',
+                                   key] = barrier_val + 1
+                elif 'Buffer Protection' in val['Product Details'].columns:
+                    buffer_val = float(self.notes_dict[key]['Product Details']
+                                       ['Buffer Protection'][0].replace(
+                                           '%', '').replace(" ", "")) / 100
+                    self.pdw_df.at[
+                        'productProtection.principalBufferLevelFinal',
+                        key] = buffer_val * -1
+                    self.pdw_df.at['productProtection.putStrikeFinal',
+                                   key] = buffer_val + 1
+                    self.pdw_df.at['productProtection.protectionLevel ',
+                                   key] = buffer_val * -1
+                    self.pdw_df.at['productProtection.downsideType',
+                                   key] = 'BUFFER'
+            # except Exception as e:
+            #     template = ("An exception of type {0} occurred. "
+            #                 "Arguments:\n{1!r}")
+            #     message = template.format(type(e).__name__, e.args)
+            #     self.errors_dict[(key,
+            #                       '_principalBarrierLevelFinal')] = (message,
+            #                                                          val)
 
     # Rule: countryDistribution
     def _countryDistribution(self):
@@ -491,18 +504,21 @@ class BmoScraper:
                 if 'Product Details ' in val.keys():
                     if 'Coupon Knock-Out Level' in val[
                             'Product Details '].columns:
-                        self.pdw_df.at[
-                            'productYield.paymentBarrierFinal', key] = float(
-                                self.notes_dict[key]['Indicative Return']
-                                ['Coupon Knock-Out Level'][0].replace(
-                                    '-', '').replace('%', '').strip()) / 100
+                        coupon_val = float(
+                            self.notes_dict[key]['Indicative Return']
+                            ['Coupon Knock-Out Level'][0].replace(
+                                '-', '').replace('%', '').replace(" ",
+                                                                  "")) / 100
+                        self.pdw_df.at['productYield.paymentBarrierFinal',
+                                       key] = coupon_val
                     elif 'Coupon Knock-In Level' in val[
                             'Product Details '].columns:
-                        self.pdw_df.at[
-                            'productYield.paymentBarrierFinal', key] = float(
-                                self.notes_dict[key]['Indicative Return']
-                                ['Coupon Knock-In Level'][0].replace(
-                                    '-', '').replace('%', '').strip()) / 100
+                        coupon_val = float(
+                            self.notes_dict[key]['Indicative Return']
+                            ['Coupon Knock-In Level'][0].replace(
+                                '%', '').replace(" ", "")) / 100
+                        self.pdw_df.at['productYield.paymentBarrierFinal',
+                                       key] = coupon_val + 1
         except Exception as e:
             template = ("An exception of type {0} occurred. "
                         "Arguments:\n{1!r}")
@@ -519,8 +535,10 @@ class BmoScraper:
                             'Payment Schedule'].columns:
                         self.pdw_df.at[
                             'productYield.paymentDateList',
-                            key] = self.notes_dict[key]['Payment Schedule'][
-                                'Coupon Payment Date'].to_list()
+                            key] = pd.to_datetime(
+                                self.notes_dict[key]['Payment Schedule']
+                                ['Coupon Payment Date']).dt.strftime(
+                                    r'%m/%d/%Y').to_list()
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -566,7 +584,8 @@ class BmoScraper:
                             key] = float(
                                 self.notes_dict[key]['Product Details']
                                 ['Contingent Coupon'][0].replace(
-                                    '-', '').replace('%', '').strip()) / 100
+                                    '-', '').replace('%', '').replace(
+                                        " ", "")) / 100
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -584,13 +603,23 @@ class BmoScraper:
                                        col] is not None
                 cond2 = self.pdw_df.at['productYield.paymentFrequency',
                                        col] is not None
+                cond3 = {
+                    'ANNUALLY': 1,
+                    'BI_MONTHLY': 24,
+                    'BI_WEEKLY': 104,
+                    'DAILY': 365,
+                    'MONTHLY': 12,
+                    'QUARTERLY': 4,
+                    'SEMI_ANNUALLY': 2,
+                    'WEEKLY': 52,
+                }
                 if cond1 and cond2:
                     self.pdw_df.at['productYield.paymentRatePerPeriodFinal',
-                                   col] = str(self.pdw_df.at[
+                                   col] = self.pdw_df.at[
                                        'productYield.paymentRatePerAnnumFinal',
-                                       col]) + ' / ' + self.pdw_df.at[
+                                       col] / cond3[self.pdw_df.at[
                                            'productYield.paymentFrequency',
-                                           col]
+                                           col]]
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -676,8 +705,8 @@ class BmoScraper:
                             'productCall.callPremiumFinal', key] = float(
                                 self.notes_dict[key]['Product Details']
                                 ['AutoCall Coupon (Next Call Date)']
-                                [0].replace('-', '').replace('%',
-                                                             '').strip()) / 100
+                                [0].replace('-', '').replace('%', '').replace(
+                                    " ", "")) / 100
                         if self.pdw_df.at['productCall.callPremiumFinal',
                                           key] > 1:
                             self.pdw_df.at[
@@ -699,7 +728,45 @@ class BmoScraper:
                             'productProtection.putLeverageFinal', key] = float(
                                 self.notes_dict[key]['Product Details']
                                 ['Downside Participation'][0].replace(
-                                    '-', '').replace('%', '').strip()) / 100
+                                    '-', '').replace('%', '').replace(
+                                        " ", "")) / 100
+
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, '_putLeverageFinal')] = (message, val)
+
+    # Rule: extendibleNote
+    def _extendibleNote(self):
+        for key, val in self.notes_dict.items():
+            try:
+                if 'Product Details' in val.keys(
+                ) and 'Rates Schedule' in val.keys():
+                    if 'Product SubType' in val['Product Details'].columns:
+                        if val['Product SubType'][
+                                0] != 'Extendible Step-up Note':
+                            if (val['Rate/Coupon'] == val['Rate/Coupon'][0]
+                                ).all():
+                                rate_coupon_val = float(
+                                    self.notes_dict[key]['Rates Schedule']
+                                    ['Rate/Coupon'][0].replace(
+                                        '%', '').replace(" ", "")) / 100
+                                self.pdw_df.at[
+                                    'productYield.paymentRatePerPeriodFinal',
+                                    key] = rate_coupon_val
+                                dt_diff = pd.to_datetime(
+                                    self.notes_dict[key]['Rates Schedule']
+                                    ['From (including)'])
+                                dt_diff = dt_diff - dt_diff.shift()
+                                dt_days = dt_diff.mean().days
+                                self.pdw_df.at[
+                                    'productYield.paymentRatePerAnnumFinal'] = rate_coupon_val / dt_days
+                                self.pdw_df.at[
+                                    'productYield.paymentDateList'] = pd.to_datetime(
+                                        self.notes_dict[key]['Rates Schedule']
+                                        ['From (including)']).dt.strftime(
+                                            r'%m/%d/%Y').to_list()
 
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
