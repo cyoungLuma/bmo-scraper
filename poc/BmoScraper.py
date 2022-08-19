@@ -477,7 +477,7 @@ class BmoScraper:
                         key] = buffer_val * -1
                     self.pdw_df.at['productProtection.putStrikeFinal',
                                    key] = buffer_val + 1
-                    self.pdw_df.at['productProtection.protectionLevel ',
+                    self.pdw_df.at['productProtection.protectionLevel',
                                    key] = buffer_val * -1
                     self.pdw_df.at['productProtection.downsideType',
                                    key] = 'BUFFER'
