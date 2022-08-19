@@ -1,0 +1,99 @@
+{
+	"version": 0,
+	"productGeneral": {
+		"structureNameExternal": "Phoenix (Autocallable)",
+		"structureShortNameExternal": "Phoenix (Autocallable)",
+		"structureNameInternal": "Contingent Interest Note",
+		"productName": "12m Cumulative Auto Callable Cert. linked to AMZN",
+		"isin": "TEST053XToot",
+		"requestId": "32587",
+		"issuer": "Bank of America",
+		"tenorCurrent": 12.0,
+		"tenorFinal": 12.0,
+		"tenorUnit": "Months",
+		"productNotionalFinal": 6085000.0,
+		"accountType": "Brokerage",
+		"currency": "USD",
+		"productFaceValue": 10.0,
+		"registrationType": "Reg S",
+		"tradeDate": "2021-12-10",
+		"strikeDate": "2021-12-10",
+		"issueDate": "2021-12-22",
+		"finalValuationDate": "2022-12-12",
+		"maturityDate": "2022-12-22",
+		"settlementType": "Physical",
+		"basketType": "Single",
+		"underlierList": [{
+			"underlierWeight": 1.0,
+			"underlierSource": "Bloomberg",
+			"underlierLevel": 3444.24,
+			"underlierSymbol": "AMZN UW"
+		}],
+		"productDeadlineTimestamp": "2021-12-10T14:30:00",
+		"productLaunchTimestamp": "2021-12-10T00:00:00",
+		"fdicInsured": false,
+		"calculationAgent": "Bank of America",
+		"stage": "Post Trade",
+		"status": "Live",
+		"salesCreditFinal": 0.0125,
+		"fundingSpread": [],
+		"riskFreeRate": "USD LIBOR",
+		"swapMaturity": "3m",
+		"externalDocumentProvider": {
+			"legalReview": "No",
+			"taxReview": "No"
+		},
+		"matchInformation": {
+			"matchNotional": 6085000.0
+		},
+		"wrapperType": "Note",
+		"structureShortNameInternal": "Contingent Interest Note",
+		"assetClass": "Single Stock",
+		"returnType": "Income",
+		"originator": "Merrill Lynch"
+	},
+	"productYield": {
+		"paymentType": "Contingent",
+		"paymentEvaluationFrequencyCurrent": "Quarterly",
+		"paymentEvaluationFrequencyFinal": "Quarterly",
+		"paymentBarrierObservationFrequency": "European",
+		"paymentDateList": [{
+				"paymentObservationDate": "2022-03-10",
+				"paymentSettlementDate": "2022-03-22"
+			},
+			{
+				"paymentObservationDate": "2022-06-10",
+				"paymentSettlementDate": "2022-06-23"
+			},
+			{
+				"paymentObservationDate": "2022-09-12",
+				"paymentSettlementDate": "2022-09-22"
+			},
+			{
+				"paymentObservationDate": "2022-12-12",
+				"paymentSettlementDate": "2022-12-22"
+			}
+		],
+		"paymentFrequency": "Quarterly",
+		"paymentRatePerPeriodFinal": 0.0815,
+		"paymentBarrierFinal": 1.0,
+		"paymentMemory": true,
+		"paymentRatePerAnnumFinal": 0.0815
+	},
+	"productCall": {},
+	"productProtection": {
+		"putObservationFrequency": "At Maturity",
+		"putObservationDateList": [
+			"2022-12-12"
+		]
+	},
+	"productGrowth": {
+		"lowerCallStrikeFinal": 1.0,
+		"digitalReturnBarrierObservationFrequency": "At Maturity",
+		"upsideParticipationAboveDigitalReturnFinal": 1.0
+	},
+	"clientSpecific": {
+		"productSymbol": ""
+	},
+	"createTimestamp": "2022-08-17T20:13:29.07"
+}
