@@ -2,8 +2,9 @@
 import pandas as pd
 from bs4 import BeautifulSoup
 from keyring import get_password
-from pymongo import MongoClient
-from pymongo.errors import DuplicateKeyError
+from numpy import nan
+# from pymongo import MongoClient
+# from pymongo.errors import DuplicateKeyError
 # from random import sample
 from time import sleep
 from urllib.error import HTTPError
@@ -14,8 +15,8 @@ from urllib.request import urlopen
 class BmoScraper:
     # Pass in note URLs & lookup for PDW
     def __init__(self, bmo_urls, user, password, host, port, options):
-        cxn_string = f"mongodb://{user}:{password}@{host}:{port}/?{options}"
-        self.client = MongoClient(cxn_string)
+        # cxn_string = f"mongodb://{user}:{password}@{host}:{port}/?{options}"
+        # self.client = MongoClient(cxn_string)
         self.notes_dict = {}
         self.errors_dict = {}
         for note in bmo_urls:
@@ -284,7 +285,7 @@ class BmoScraper:
                         self.pdw_df.at[
                             'productGeneral.issueDate', key] = pd.to_datetime(
                                 self.notes_dict[key]['Product Details']
-                                ['Issue Date']).dt.strftime(r'%m/%d/%Y')[0]
+                                ['Issue Date']).dt.strftime(r'%Y-%m-%d')[0]
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -309,7 +310,7 @@ class BmoScraper:
                             'productGeneral.maturityDate',
                             key] = pd.to_datetime(
                                 self.notes_dict[key]['Product Details']
-                                ['Maturity Date']).dt.strftime(r'%m/%d/%Y')[0]
+                                ['Maturity Date']).dt.strftime(r'%Y-%m-%d')[0]
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -337,7 +338,7 @@ class BmoScraper:
     def _stage(self):
         # Simple hardcode
         for key in self.notes_dict.keys():
-            self.pdw_df.at['productGeneral.stage', key] = 'OPS_REVIEW'
+            self.pdw_df.at['productGeneral.stage', key] = 'Ops Review'
 
     # Rule: status
     def _status(self):
@@ -373,7 +374,7 @@ class BmoScraper:
                         self.pdw_df.at[
                             'productGeneral.tenorUnit',
                             key] = self.notes_dict[key]['Product Details'][
-                                'Term'][0].split()[1].upper()
+                                'Term'][0].split()[1].title()
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -386,10 +387,22 @@ class BmoScraper:
             # Get value from table
             for key, val in self.notes_dict.items():
                 if 'Product Details' in val.keys():
-                    if 'Linked To' in val['Product Details'].columns:
+                    if 'Linked To' in val[
+                            'Product Details'].columns and ',' in self.notes_dict[
+                                key]['Product Details']['Linked To'][0]:
+                        self.pdw_df.at[
+                            'productGeneral.underlierList',
+                            key] = self.notes_dict[key]['Product Details'][
+                                'Linked To'][0].replace(' ', '').split(',')
+                    else:
                         self.pdw_df.at['productGeneral.underlierList',
-                                       key] = self.notes_dict[key][
-                                           'Product Details']['Linked To'][0]
+                                       key] = [{
+                                           'underlierSymbol':
+                                           self.notes_dict[key]
+                                           ['Product Details']['Linked To'][0],
+                                           'underlierweight':
+                                           1.0
+                                       }]
         except Exception as e:
             template = ("An exception of type {0} occurred. "
                         "Arguments:\n{1!r}")
@@ -481,6 +494,7 @@ class BmoScraper:
                                    key] = buffer_val * -1
                     self.pdw_df.at['productProtection.downsideType',
                                    key] = 'BUFFER'
+
             # except Exception as e:
             #     template = ("An exception of type {0} occurred. "
             #                 "Arguments:\n{1!r}")
@@ -489,12 +503,12 @@ class BmoScraper:
             #                       '_principalBarrierLevelFinal')] = (message,
             #                                                          val)
 
-    # Rule: countryDistribution
-    def _countryDistribution(self):
-        # Hardcode
-        for key in self.notes_dict.keys():
-            self.pdw_df.at['productRegulatory.countryDistribution',
-                           key] = 'CANADA'
+    # # Rule: countryDistribution
+    # def _countryDistribution(self):
+    #     # Hardcode
+    #     for key in self.notes_dict.keys():
+    #         self.pdw_df.at['productRegulatory.countryDistribution',
+    #                        key] = 'CANADA'
 
     # Rule: paymentBarrierFinal
     def _paymentBarrierFinal(self):
@@ -799,7 +813,7 @@ class BmoScraper:
         self._underlierweight()
         self._upsideParticipationRateFinal()
         self._principalBarrierLevelFinal()
-        self._countryDistribution()
+        # self._countryDistribution()
         self._paymentBarrierFinal()
         self._paymentDateList()
         self._paymentEvaluationFrequencyFinal()
@@ -815,60 +829,114 @@ class BmoScraper:
 
     def reset_pdw_indices(self):
         # Reset indices to prepare to JSON
-        self.pdw_insert_df = self.pdw_df.copy()
-        self.pdw_insert_df.drop(['PDW Name', 'Mark to Market Price'],
-                                inplace=True)
-        self.pdw_insert_df.dropna(subset=self.pdw_df.columns,
-                                  how='all',
-                                  inplace=True)
-        self.pdw_insert_df.reset_index(inplace=True)
+        try:
+            self.pdw_insert_df = self.pdw_df.copy()
+            self.pdw_insert_df.drop(['PDW Name', 'Mark to Market Price'],
+                                    inplace=True)
+            self.pdw_insert_df.dropna(subset=self.pdw_df.columns,
+                                      how='all',
+                                      inplace=True)
+            self.pdw_insert_df.reset_index(inplace=True)
+        except Exception as e:
+            template = ("An exception of type {0} occurred. "
+                        "Arguments:\n{1!r}")
+            message = template.format(type(e).__name__, e.args)
+            self.errors_dict[(self.pdw_insert_df,
+                              'reset_pdw_indices')] = message
 
     def process_pdw_dicts(self):
         # Process for JSON
         self.pdw_df_dict = {}
         for col in self.pdw_df.columns:
-            self.pdw_df_dict[col] = self.pdw_insert_df[['PDW Fields',
-                                                        col]].dropna()
-            self.pdw_df_dict[col] = pd.concat(
-                [
-                    self.pdw_df_dict[col]['PDW Fields'].str.split(
-                        '.', expand=True), self.pdw_df_dict[col]
-                ],
-                axis=1,
-            )
-            self.pdw_df_dict[col].drop(columns='PDW Fields', inplace=True)
+            try:
+                self.pdw_df_dict[col] = self.pdw_insert_df[['PDW Fields',
+                                                            col]].dropna()
+                self.pdw_df_dict[col] = pd.concat(
+                    [
+                        self.pdw_df_dict[col]['PDW Fields'].str.split(
+                            '.', expand=True), self.pdw_df_dict[col]
+                    ],
+                    axis=1,
+                )
+                self.pdw_df_dict[col].drop(columns='PDW Fields', inplace=True)
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(col, 'process_pdw_dicts')] = message
 
     def insert_pdw_json_to_pdw(self):
         # Convert to JSON & set up cxn
         self.result = {}
-        db = self.client['test-masking-dev']
-        PdwProductCore = db.PdwProductCore
+        # db = self.client['test-masking-dev']
+        # PdwProductCore = db.PdwProductCore
         for col in self.pdw_df_dict.keys():
-            len_cols = list(range(len(self.pdw_df_dict[col].columns) - 1))
-            pdw_pre_insert = self.pdw_df_dict[col].set_index(len_cols).groupby(
-                level=0).apply(
-                    lambda x: x.xs(x.name)[col].to_dict()).to_dict()
-
-            # Prepare final JSON
-            pdw_insert = {}
-            for key, val in pdw_pre_insert.items():
-                pdw_insert[key] = {}
-                for key2, val2 in val.items():
-                    if isinstance(key2, tuple):
-                        if isinstance(key2[1], str):
-                            pdw_insert[key][key2[0]] = {key2[1]: val2}
-                        else:
-                            pdw_insert[key][key2[0]] = val2
-                    else:
-                        pdw_insert[key][key2] = val2
-
-            # Insert into DB
             try:
-                self.result[col] = (PdwProductCore.insert_one(pdw_insert),
-                                    pdw_insert)
-            except DuplicateKeyError:
-                self.result[col] = ('Product exists', pdw_insert)
-            self.result[col] = pdw_insert
+                len_cols = list(range(len(self.pdw_df_dict[col].columns) - 1))
+                pdw_pre_insert = self.pdw_df_dict[col].set_index(
+                    len_cols).groupby(level=0).apply(
+                        lambda x: x.xs(x.name)[col].to_dict()).to_dict()
+
+                # Prepare underlier list
+                if ('underlierList',
+                        nan) in pdw_pre_insert['productGeneral'].keys() and (
+                            'underlierList', 'underlierweight'
+                        ) in pdw_pre_insert['productGeneral'].keys():
+                    pdw_pre_insert['productGeneral']['underlierList'] = []
+                    for sym, weight in zip(
+                            pdw_pre_insert['productGeneral'][('underlierList',
+                                                              nan)],
+                            pdw_pre_insert['productGeneral'][(
+                                'underlierList', 'underlierweight')]):
+                        pdw_pre_insert['productGeneral'][
+                            'underlierList'].append({
+                                'underlierSymbol': sym,
+                                'underlierweight': weight
+                            })
+                    del pdw_pre_insert['productGeneral'][('underlierList',
+                                                          nan)]
+                    del pdw_pre_insert['productGeneral'][('underlierList',
+                                                          'underlierweight')]
+
+                # Prepare final JSON
+                pdw_insert = {}
+                for key, val in pdw_pre_insert.items():
+                    pdw_insert[key] = {}
+                    for key2, val2 in val.items():
+                        if isinstance(key2, tuple):
+                            if isinstance(key2[1], str):
+                                pdw_insert[key][key2[0]] = {key2[1]: val2}
+                            else:
+                                pdw_insert[key][key2[0]] = val2
+                        else:
+                            pdw_insert[key][key2] = val2
+
+                # Final JSON assertions
+                required_fields = [
+                    'productProtection',
+                    'productCall',
+                    'productYield',
+                    # 'productGeneral.wrapperType',
+                ]
+                for field in required_fields:
+                    if field not in pdw_insert.keys():
+                        pdw_insert[field] = {}
+                if 'wrapperType' not in pdw_insert.keys():
+                    pdw_insert['productGeneral']['wrapperType'] = 'Note'
+
+                # Insert into DB
+                # try:
+                # self.result[col] = (PdwProductCore.insert_one(pdw_insert),
+                #                     pdw_insert)
+                #     self.result[col] = pdw_insert
+                # except DuplicateKeyError:
+                #     self.result[col] = ('Product exists', pdw_insert)
+                self.result[col] = pdw_insert
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(col, 'insert_pdw_json_to_pdw')] = message
 
     def write_to_pdw(self):
         # The writing process as one method
@@ -905,9 +973,9 @@ bmo.run_all_rules()
 pd.set_option('display.max_rows', 200)
 bmo.pdw_df
 
-# %% View any errors that were caught
-bmo.errors_dict
-
 # %% Write to PDW & view status
 bmo.write_to_pdw()
 bmo.result
+
+# %% View any errors that were caught
+bmo.errors_dict
