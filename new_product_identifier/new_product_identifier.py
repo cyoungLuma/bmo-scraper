@@ -90,7 +90,7 @@ class Driver:
                 elif len(str(i)) == 8:
                     listy.append('C' + str(i))
                 elif len(str(i)) == 6:
-                    listy.append('CAA' + str(i))
+                    listy.append('CAD' + str(i))
                 else:
                     listy.append('Error')
             else:
