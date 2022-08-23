@@ -130,6 +130,13 @@ class BmoScraper:
                                 self.notes_dict[key]['Payment Schedule']
                                 ['Observation Date']).dt.strftime(
                                     r'%Y-%m-%d').to_list()
+                        self.pdw_df.at[
+                            'productCall.callObservationDateList', key] = [{
+                                'callObservationDate':
+                                val
+                            } for val in bmo.pdw_df.at[
+                                'productCall.callObservationDateList', key]]
+
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -463,45 +470,46 @@ class BmoScraper:
     def _principalBarrierLevelFinal(self):
         # Get value from table & convert to float
         for key, val in self.notes_dict.items():
-            # try:
-            # These can be negative!
-            if 'Product Details' in val.keys():
-                if 'Barrier Protection' in val['Product Details'].columns:
-                    barrier_val = float(self.notes_dict[key]['Product Details']
-                                        ['Barrier Protection'][0].replace(
-                                            '%', '').replace(" ", "")) / 100
-                    self.pdw_df.at[
-                        'productProtection.principalBarrierLevelFinal',
-                        key] = barrier_val + 1
-                    self.pdw_df.at['productProtection.protectionLevel',
-                                   key] = barrier_val * -1
-                    self.pdw_df.at['productProtection.downsideType',
-                                   key] = 'Barrier'
-                    self.pdw_df.at['productProtection.putLeverageFinal',
-                                   key] = 1
-                    self.pdw_df.at['productProtection.putStrikeFinal',
-                                   key] = barrier_val + 1
-                elif 'Buffer Protection' in val['Product Details'].columns:
-                    buffer_val = float(self.notes_dict[key]['Product Details']
-                                       ['Buffer Protection'][0].replace(
-                                           '%', '').replace(" ", "")) / 100
-                    self.pdw_df.at[
-                        'productProtection.principalBufferLevelFinal',
-                        key] = buffer_val * -1
-                    self.pdw_df.at['productProtection.putStrikeFinal',
-                                   key] = buffer_val + 1
-                    self.pdw_df.at['productProtection.protectionLevel',
-                                   key] = buffer_val * -1
-                    self.pdw_df.at['productProtection.downsideType',
-                                   key] = 'Buffer'
-
-            # except Exception as e:
-            #     template = ("An exception of type {0} occurred. "
-            #                 "Arguments:\n{1!r}")
-            #     message = template.format(type(e).__name__, e.args)
-            #     self.errors_dict[(key,
-            #                       '_principalBarrierLevelFinal')] = (message,
-            #                                                          val)
+            try:
+                # These can be negative!
+                if 'Product Details' in val.keys():
+                    if 'Barrier Protection' in val['Product Details'].columns:
+                        barrier_val = float(
+                            self.notes_dict[key]['Product Details']
+                            ['Barrier Protection'][0].replace('%', '').replace(
+                                " ", "")) / 100
+                        self.pdw_df.at[
+                            'productProtection.principalBarrierLevelFinal',
+                            key] = barrier_val + 1
+                        self.pdw_df.at['productProtection.protectionLevel',
+                                       key] = barrier_val * -1
+                        self.pdw_df.at['productProtection.downsideType',
+                                       key] = 'Barrier'
+                        self.pdw_df.at['productProtection.putLeverageFinal',
+                                       key] = 1
+                        self.pdw_df.at['productProtection.putStrikeFinal',
+                                       key] = barrier_val + 1
+                    elif 'Buffer Protection' in val['Product Details'].columns:
+                        buffer_val = float(
+                            self.notes_dict[key]['Product Details']
+                            ['Buffer Protection'][0].replace('%', '').replace(
+                                " ", "")) / 100
+                        self.pdw_df.at[
+                            'productProtection.principalBufferLevelFinal',
+                            key] = buffer_val * -1
+                        self.pdw_df.at['productProtection.putStrikeFinal',
+                                       key] = buffer_val + 1
+                        self.pdw_df.at['productProtection.protectionLevel',
+                                       key] = buffer_val * -1
+                        self.pdw_df.at['productProtection.downsideType',
+                                       key] = 'Buffer'
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key,
+                                  '_principalBarrierLevelFinal')] = (message,
+                                                                     val)
 
     # # Rule: countryDistribution
     # def _countryDistribution(self):
@@ -553,6 +561,12 @@ class BmoScraper:
                                 self.notes_dict[key]['Payment Schedule']
                                 ['Coupon Payment Date']).dt.strftime(
                                     r'%Y-%m-%d').to_list()
+                        self.pdw_df.at['productYield.paymentDateList',
+                                       key] = [{
+                                           'paymentObservationDate': val
+                                       } for val in bmo.pdw_df.at[
+                                           'productYield.paymentDateList',
+                                           key]]
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -890,8 +904,12 @@ class BmoScraper:
                                 'underlierList', 'underlierweight')]):
                         pdw_pre_insert['productGeneral'][
                             'underlierList'].append({
-                                'underlierSymbol': sym,
-                                'underlierweight': weight
+                                'underlierSymbol':
+                                sym,
+                                'underlierweight':
+                                weight,
+                                'underlierSource':
+                                'Bloomberg'
                             })
                     del pdw_pre_insert['productGeneral'][('underlierList',
                                                           nan)]
