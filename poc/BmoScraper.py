@@ -129,7 +129,7 @@ class BmoScraper:
                             key] = pd.to_datetime(
                                 self.notes_dict[key]['Payment Schedule']
                                 ['Observation Date']).dt.strftime(
-                                    r'%m/%d/%Y').to_list()
+                                    r'%Y-%m-%d').to_list()
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -476,7 +476,7 @@ class BmoScraper:
                     self.pdw_df.at['productProtection.protectionLevel',
                                    key] = barrier_val * -1
                     self.pdw_df.at['productProtection.downsideType',
-                                   key] = 'BARRIER'
+                                   key] = 'Barrier'
                     self.pdw_df.at['productProtection.putLeverageFinal',
                                    key] = 1
                     self.pdw_df.at['productProtection.putStrikeFinal',
@@ -493,7 +493,7 @@ class BmoScraper:
                     self.pdw_df.at['productProtection.protectionLevel',
                                    key] = buffer_val * -1
                     self.pdw_df.at['productProtection.downsideType',
-                                   key] = 'BUFFER'
+                                   key] = 'Buffer'
 
             # except Exception as e:
             #     template = ("An exception of type {0} occurred. "
@@ -552,7 +552,7 @@ class BmoScraper:
                             key] = pd.to_datetime(
                                 self.notes_dict[key]['Payment Schedule']
                                 ['Coupon Payment Date']).dt.strftime(
-                                    r'%m/%d/%Y').to_list()
+                                    r'%Y-%m-%d').to_list()
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -701,7 +701,7 @@ class BmoScraper:
                             'productGeneral.tradeDate', key] = pd.to_datetime(
                                 self.notes_dict[key]['Product Details']
                                 ['Available Until']).dt.strftime(
-                                    r'%m/%d/%Y')[0]
+                                    r'%Y-%m-%d')[0]
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -780,7 +780,7 @@ class BmoScraper:
                                     'productYield.paymentDateList'] = pd.to_datetime(
                                         self.notes_dict[key]['Rates Schedule']
                                         ['From (including)']).dt.strftime(
-                                            r'%m/%d/%Y').to_list()
+                                            r'%Y-%m-%d').to_list()
 
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
