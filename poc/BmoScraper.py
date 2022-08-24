@@ -185,6 +185,12 @@ class BmoScraper:
                         dt_diff = dt_diff - dt_diff.shift()
                         dt_days = dt_diff.mean().days
                         check_call_freq(self, dt_days)
+                elif 'Product Details' in val.keys():
+                    if 'Extension Frequency' in val['Product Details'].columns:
+                        self.pdw_df.at[
+                            'productCall.callObservationFrequency',
+                            key] = self.notes_dict[key]['Product Details'][
+                                'Extension Frequency'][0]
         except Exception as e:
             template = ("An exception of type {0} occurred. "
                         "Arguments:\n{1!r}")
@@ -260,7 +266,11 @@ class BmoScraper:
             try:
                 # Get JHN column and correct length
                 if 'Product Details' in val.keys():
-                    if 'JHN Code' in val['Product Details'].columns:
+                    if 'Cusip' in val['Product Details'].columns:
+                        self.pdw_df.at['productGeneral.cusip',
+                                       key] = self.notes_dict[key][
+                                           'Product Details']['Cusip'][0]
+                    elif 'JHN Code' in val['Product Details'].columns:
                         jhn = self.notes_dict[key]['Product Details'][
                             'JHN Code'][0]
                         if len(jhn) == 7:
@@ -660,7 +670,9 @@ class BmoScraper:
         for key, val in self.notes_dict.items():
             try:
                 if 'Product Details' in val.keys():
-                    if 'JHN Code' in val['Product Details'].columns:
+                    if 'JHN Code' in val[
+                            'Product Details'].columns and key.startswith(
+                                'JHN'):
                         self.pdw_df.at['productGeneral.fundservID',
                                        key] = self.notes_dict[key][
                                            'Product Details']['JHN Code'][0]
