@@ -1,8 +1,8 @@
 # %% Libs
+import json
 import pandas as pd
 from bs4 import BeautifulSoup
-from keyring import get_password
-# import json
+# from keyring import get_password
 from numpy import nan
 # from pymongo import MongoClient
 # from pymongo.errors import DuplicateKeyError
@@ -15,7 +15,15 @@ from urllib.request import urlopen
 # %% Read in the examples
 class BmoScraper:
     # Pass in note URLs & lookup for PDW
-    def __init__(self, bmo_urls, user, password, host, port, options):
+    def __init__(
+        self,
+        bmo_urls,
+        # user,
+        # password,
+        # host,
+        # port,
+        # options,
+    ):
         # cxn_string = f"mongodb://{user}:{password}@{host}:{port}/?{options}"
         # self.client = MongoClient(cxn_string)
         self.notes_dict = {}
@@ -151,25 +159,25 @@ class BmoScraper:
         def check_call_freq(self, dt_days):
             if 2 <= dt_days <= 5:
                 self.pdw_df.at['productCall.callObservationFrequency',
-                               key] = 'Bi Weekly'
-            if 6 <= dt_days <= 7:
+                               key] = 'Bi-Weekly'
+            elif 6 <= dt_days <= 7:
                 self.pdw_df.at['productCall.callObservationFrequency',
                                key] = 'Weekly'
-            if 28 <= dt_days <= 31:
+            elif 28 <= dt_days <= 31:
                 self.pdw_df.at['productCall.callObservationFrequency',
                                key] = 'Monthly'
             elif 14 <= dt_days <= 16:
                 self.pdw_df.at['productCall.callObservationFrequency',
-                               key] = 'Bi Monthly'
+                               key] = 'Bi-Monthly'
             elif dt_days == 1:
                 self.pdw_df.at['productCall.callObservationFrequency',
                                key] = 'Daily'
             elif 364 <= dt_days <= 366:
                 self.pdw_df.at['productCall.callObservationFrequency',
-                               key] = 'Annualy'
+                               key] = 'Annually'
             elif 182 <= dt_days <= 184:
                 self.pdw_df.at['productCall.callObservationFrequency',
-                               key] = 'Semi Annualy'
+                               key] = 'Semi-Annually'
             elif 89 <= dt_days <= 92:
                 self.pdw_df.at['productCall.callObservationFrequency',
                                key] = 'Quarterly'
@@ -637,12 +645,12 @@ class BmoScraper:
                                        col] is not None
                 cond3 = {
                     'Annualy': 1,
-                    'Bi Monthly': 24,
-                    'Bi Weekly': 104,
+                    'Bi-Monthly': 24,
+                    'Bi-Weekly': 104,
                     'Daily': 365,
                     'Monthly': 12,
                     'Quarterly': 4,
-                    'Semi Annualy': 2,
+                    'Semi-Annually': 2,
                     'Weekly': 52,
                 }
                 if cond1 and cond2:
@@ -889,7 +897,7 @@ class BmoScraper:
                 message = template.format(type(e).__name__, e.args)
                 self.errors_dict[(col, 'process_pdw_dicts')] = message
 
-    def insert_pdw_json_to_pdw(self):
+    def gen_pdw_json(self):
         # Convert to JSON & set up cxn
         self.result = {}
         # db = self.client['test-masking-dev']
@@ -961,17 +969,18 @@ class BmoScraper:
                 # except DuplicateKeyError:
                 #     self.result[col] = ('Product exists', pdw_insert)
                 self.result[col] = pdw_insert
+                self.result[col] = json.dumps(self.result[col])
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
                 message = template.format(type(e).__name__, e.args)
                 self.errors_dict[(col, 'insert_pdw_json_to_pdw')] = message
 
-    def write_to_pdw(self):
+    def output_jsons(self):
         # The writing process as one method
         self.reset_pdw_indices()
         self.process_pdw_dicts()
-        self.insert_pdw_json_to_pdw()
+        self.gen_pdw_json()
 
 
 # %% Params
@@ -985,15 +994,16 @@ bmo_urls_sample = [
     'https://www.bmonotes.com/Note/JHN2058',
     'https://www.bmonotes.com/Note/JHN15992',
 ]
-user = 'skimble'
-password = get_password('docdb_preprod', user)
-host = "dev-documentdb.cluster-cb6kajicuplh.us-east-1.docdb.amazonaws.com"
-port = "27017"
-options = ("tls=true&tlsAllowInvalidCertificates=true&replicaSet=rs0&"
-           "readPreference=secondaryPreferred&retryWrites=false")
+# user = 'skimble'
+# password = get_password('docdb_preprod', user)
+# host = "dev-documentdb.cluster-cb6kajicuplh.us-east-1.docdb.amazonaws.com"
+# port = "27017"
+# options = ("tls=true&tlsAllowInvalidCertificates=true&replicaSet=rs0&"
+#            "readPreference=secondaryPreferred&retryWrites=false")
 
 # %% Add params to object
-bmo = BmoScraper(bmo_urls_sample, user, password, host, port, options)
+# bmo = BmoScraper(bmo_urls_sample, user, password, host, port, options)
+bmo = BmoScraper(bmo_urls_sample)
 
 # %% Run all rules
 bmo.run_all_rules()
@@ -1003,7 +1013,7 @@ pd.set_option('display.max_rows', 200)
 bmo.pdw_df
 
 # %% Write to PDW & view status
-bmo.write_to_pdw()
+bmo.output_jsons()
 bmo.result
 
 # %% View any errors that were caught
