@@ -2,10 +2,7 @@
 import json
 import pandas as pd
 from bs4 import BeautifulSoup
-# from keyring import get_password
 from numpy import nan
-# from pymongo import MongoClient
-# from pymongo.errors import DuplicateKeyError
 # from random import sample
 from time import sleep
 from urllib.error import HTTPError
@@ -15,17 +12,7 @@ from urllib.request import urlopen
 # %% Read in the examples
 class BmoScraper:
     # Pass in note URLs & lookup for PDW
-    def __init__(
-        self,
-        bmo_urls,
-        # user,
-        # password,
-        # host,
-        # port,
-        # options,
-    ):
-        # cxn_string = f"mongodb://{user}:{password}@{host}:{port}/?{options}"
-        # self.client = MongoClient(cxn_string)
+    def __init__(self, bmo_urls):
         self.notes_dict = {}
         self.errors_dict = {}
         for note in bmo_urls:
@@ -56,7 +43,8 @@ class BmoScraper:
 
         self.bmo_example_fields = pd.read_excel('BMO Examples.xlsx')
         self.pdw_df = self.bmo_example_fields[['PDW Fields']].copy()
-        self.skip_cols = pd.Series(['Payment Schedule', 'Portfolio Summary'])
+        self.skip_cols = pd.Series(
+            ['Payment Schedule', 'Portfolio Summary', 'Rates Schedule'])
 
     # Get all scraping results as a single row table
     def transpose_set_header(self):
@@ -143,7 +131,7 @@ class BmoScraper:
                             'productCall.callObservationDateList', key] = [{
                                 'callObservationDate':
                                 val
-                            } for val in bmo.pdw_df.at[
+                            } for val in self.pdw_df.at[
                                 'productCall.callObservationDateList', key]]
 
             except Exception as e:
@@ -215,12 +203,11 @@ class BmoScraper:
                         autocall_series = self.notes_dict[
                             key]['Payment Schedule']['Autocall Level'].dropna(
                             ).reset_index(drop=True)
-                        if (autocall_series == autocall_series[0]).all():
-                            # self.pdw_df.at['productCall.callType', key] = 'Autocall'
+                        if (autocall_series == autocall_series.values[0]
+                            ).all():
                             self.pdw_df.at['productCall.callType',
                                            key] = 'Auto'
                         else:
-                            # self.pdw_df.at['productCall.callType', key] = 'Auto Step'
                             self.pdw_df.at['productCall.callType',
                                            key] = 'Autocall Step'
             except Exception as e:
@@ -403,24 +390,26 @@ class BmoScraper:
             # Get value from table
             for key, val in self.notes_dict.items():
                 if 'Product Details' in val.keys():
-                    if 'Linked To' in val[
-                            'Product Details'].columns and ',' in self.notes_dict[
-                                key]['Product Details']['Linked To'][0]:
-                        self.pdw_df.at[
-                            'productGeneral.underlierList',
-                            key] = self.notes_dict[key]['Product Details'][
-                                'Linked To'][0].replace(' ', '').split(',')
-                    else:
-                        self.pdw_df.at['productGeneral.underlierList',
-                                       key] = [{
-                                           'underlierSymbol':
-                                           self.notes_dict[key]
-                                           ['Product Details']['Linked To'][0],
-                                           'underlierWeight':
-                                           1.0,
-                                           'underlierSource':
-                                           'Bloomberg',
-                                       }]
+                    if 'Linked To' in val['Product Details'].columns:
+                        if ',' in self.notes_dict[key]['Product Details'][
+                                'Linked To'][0]:
+                            self.pdw_df.at[
+                                'productGeneral.underlierList',
+                                key] = self.notes_dict[key]['Product Details'][
+                                    'Linked To'][0].replace(' ', '').split(',')
+
+                        elif ',' not in self.notes_dict[key][
+                                'Product Details']['Linked To'][0]:
+                            self.pdw_df.at[
+                                'productGeneral.underlierList', key] = [{
+                                    'underlierSymbol':
+                                    self.notes_dict[key]['Product Details']
+                                    ['Linked To'][0],
+                                    'underlierWeight':
+                                    1.0,
+                                    'underlierSource':
+                                    'Bloomberg',
+                                }]
         except Exception as e:
             template = ("An exception of type {0} occurred. "
                         "Arguments:\n{1!r}")
@@ -523,13 +512,6 @@ class BmoScraper:
                                   '_principalBarrierLevelFinal')] = (message,
                                                                      val)
 
-    # # Rule: countryDistribution
-    # def _countryDistribution(self):
-    #     # Hardcode
-    #     for key in self.notes_dict.keys():
-    #         self.pdw_df.at['productRegulatory.countryDistribution',
-    #                        key] = 'CANADA'
-
     # Rule: paymentBarrierFinal
     def _paymentBarrierFinal(self):
         # Grab field from table & convert to float
@@ -576,7 +558,7 @@ class BmoScraper:
                         self.pdw_df.at['productYield.paymentDateList',
                                        key] = [{
                                            'paymentDate': val
-                                       } for val in bmo.pdw_df.at[
+                                       } for val in self.pdw_df.at[
                                            'productYield.paymentDateList',
                                            key]]
             except Exception as e:
@@ -592,19 +574,25 @@ class BmoScraper:
             try:
                 if 'Product Details' in val.keys():
                     if 'Pay Frequency' in val['Product Details'].columns:
-                        self.pdw_df.at[
-                            'productYield.paymentEvaluationFrequencyFinal',
-                            key] = self.notes_dict[key]['Product Details'][
-                                'Pay Frequency'][0].title()
-                        self.pdw_df.at[
-                            'productYield.paymentFrequency',
-                            key] = self.notes_dict[key]['Product Details'][
-                                'Pay Frequency'][0].title()
+                        if isinstance(
+                                val['Product Details']['Pay Frequency'][0],
+                                str):
+                            self.pdw_df.at[
+                                'productYield.paymentEvaluationFrequencyFinal',
+                                key] = self.notes_dict[key]['Product Details'][
+                                    'Pay Frequency'][0].title()
+                            self.pdw_df.at[
+                                'productYield.paymentFrequency',
+                                key] = self.notes_dict[key]['Product Details'][
+                                    'Pay Frequency'][0].title()
                     elif 'Coupon Frequency' in val['Product Details'].columns:
-                        self.pdw_df.at[
-                            'productYield.paymentFrequency',
-                            key] = self.notes_dict[key]['Product Details'][
-                                'Coupon Frequency'][0].title()
+                        if isinstance(
+                                val['Product Details']['Coupon Frequency'][0],
+                                str):
+                            self.pdw_df.at[
+                                'productYield.paymentFrequency',
+                                key] = self.notes_dict[key]['Product Details'][
+                                    'Coupon Frequency'][0].title()
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -749,8 +737,8 @@ class BmoScraper:
                                     " ", "")) / 100
                         if self.pdw_df.at['productCall.callPremiumFinal',
                                           key] > 1:
-                            self.pdw_df.at[
-                                'productProtection.downsideType'] = 'Geared Buffer'
+                            self.pdw_df.at['productProtection.downsideType',
+                                           key] = 'Geared Buffer'
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -784,14 +772,15 @@ class BmoScraper:
                 if 'Product Details' in val.keys(
                 ) and 'Rates Schedule' in val.keys():
                     if 'Product SubType' in val['Product Details'].columns:
-                        if val['Product SubType'][
+                        if val['Product Details']['Product SubType'][
                                 0] != 'Extendible Step-up Note':
-                            if (val['Rate/Coupon'] == val['Rate/Coupon'][0]
-                                ).all():
-                                rate_coupon_val = float(
-                                    self.notes_dict[key]['Rates Schedule']
-                                    ['Rate/Coupon'][0].replace(
-                                        '%', '').replace(" ", "")) / 100
+                            if (val['Rates Schedule']['Rate/Coupon'] ==
+                                    val['Rates Schedule']
+                                ['Rate/Coupon'].values[0]).all():
+                                rate_coupon_val = self.notes_dict[key][
+                                    'Rates Schedule']['Rate/Coupon'].values[
+                                        0].replace('%', '').replace(" ", "")
+                                rate_coupon_val = float(rate_coupon_val) / 100
                                 self.pdw_df.at[
                                     'productYield.paymentRatePerPeriodFinal',
                                     key] = rate_coupon_val
@@ -801,9 +790,11 @@ class BmoScraper:
                                 dt_diff = dt_diff - dt_diff.shift()
                                 dt_days = dt_diff.mean().days
                                 self.pdw_df.at[
-                                    'productYield.paymentRatePerAnnumFinal'] = rate_coupon_val / dt_days
+                                    'productYield.paymentRatePerAnnumFinal',
+                                    key] = rate_coupon_val / dt_days
                                 self.pdw_df.at[
-                                    'productYield.paymentDateList'] = pd.to_datetime(
+                                    'productYield.paymentDateList',
+                                    key] = pd.to_datetime(
                                         self.notes_dict[key]['Rates Schedule']
                                         ['From (including)']).dt.strftime(
                                             r'%Y-%m-%d').to_list()
@@ -811,14 +802,13 @@ class BmoScraper:
                                     'productYield.paymentDateList', key] = [{
                                         'paymentDate':
                                         val
-                                    } for val in bmo.pdw_df.at[
+                                    } for val in self.pdw_df.at[
                                         'productYield.paymentDateList', key]]
-
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
                 message = template.format(type(e).__name__, e.args)
-                self.errors_dict[(key, '_putLeverageFinal')] = (message, val)
+                self.errors_dict[(key, '_extendibleNote')] = (message, val)
 
     # Run all rules
     def run_all_rules(self):
@@ -845,7 +835,6 @@ class BmoScraper:
         self._underlierWeight()
         self._upsideParticipationRateFinal()
         self._principalBarrierLevelFinal()
-        # self._countryDistribution()
         self._paymentBarrierFinal()
         self._paymentDateList()
         self._paymentEvaluationFrequencyFinal()
@@ -900,8 +889,6 @@ class BmoScraper:
     def gen_pdw_json(self):
         # Convert to JSON & set up cxn
         self.result = {}
-        # db = self.client['test-masking-dev']
-        # PdwProductCore = db.PdwProductCore
         for col in self.pdw_df_dict.keys():
             try:
                 len_cols = list(range(len(self.pdw_df_dict[col].columns) - 1))
@@ -953,7 +940,6 @@ class BmoScraper:
                     'productCall',
                     'productYield',
                     'productGrowth',
-                    # 'productGeneral.wrapperType',
                 ]
                 for field in required_fields:
                     if field not in pdw_insert.keys():
@@ -961,13 +947,7 @@ class BmoScraper:
                 if 'wrapperType' not in pdw_insert['productGeneral'].keys():
                     pdw_insert['productGeneral']['wrapperType'] = 'Note'
 
-                # Insert into DB
-                # try:
-                # self.result[col] = (PdwProductCore.insert_one(pdw_insert),
-                #                     pdw_insert)
-                #     self.result[col] = pdw_insert
-                # except DuplicateKeyError:
-                #     self.result[col] = ('Product exists', pdw_insert)
+                # Export JSONS
                 self.result[col] = pdw_insert
                 self.result[col] = json.dumps(self.result[col])
             except Exception as e:
@@ -993,16 +973,10 @@ bmo_urls_sample = [
     'https://www.bmonotes.com/Note/JHN15093',
     'https://www.bmonotes.com/Note/JHN2058',
     'https://www.bmonotes.com/Note/JHN15992',
+    'https://www.bmonotes.com/Note/06368DEW0',
 ]
-# user = 'skimble'
-# password = get_password('docdb_preprod', user)
-# host = "dev-documentdb.cluster-cb6kajicuplh.us-east-1.docdb.amazonaws.com"
-# port = "27017"
-# options = ("tls=true&tlsAllowInvalidCertificates=true&replicaSet=rs0&"
-#            "readPreference=secondaryPreferred&retryWrites=false")
 
 # %% Add params to object
-# bmo = BmoScraper(bmo_urls_sample, user, password, host, port, options)
 bmo = BmoScraper(bmo_urls_sample)
 
 # %% Run all rules
