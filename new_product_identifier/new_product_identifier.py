@@ -75,7 +75,6 @@ class Driver:
                     time.sleep(2)
                     bmo_act_dict[num] = pd.read_html(driver.page_source)[1]
                     num += 1
-            driver.close()
             # Combine the dataframes
             bmo_active_products = pd.concat([bmo_act_dict[k] for k in bmo_act_dict.keys()], ignore_index=True)
             all_bmo_active_products = pd.concat([all_bmo_active_products, bmo_active_products], ignore_index=True)
@@ -159,7 +158,6 @@ class Driver:
             rbc_act_dict[num] = temp_data
             rbc_act_dict[num]['urls'] = [driver.find_element_by_xpath('//*[@id="productGrid"]/div[2]/div[3]/table/tbody/tr[{}]/td[3]/a'.format(i)).get_attribute('href') 
                                         for i in range(1, len(rbc_act_dict[0])*2, 2)]
-        driver.close()
         # Combine the dataframes
         rbc_active_products = pd.concat([rbc_act_dict[k] for k in rbc_act_dict.keys()], ignore_index=True)
         rbc_active_products = rbc_active_products[['Product Name', 'FundSERV Code', 'ADP Code',
@@ -189,6 +187,9 @@ class Driver:
 
         return urls
 
+    def close_driver(self):
+        self.driver.close()
+
 if __name__ == '__main__':
     # Instantiate Driver
     driver = Driver()
@@ -199,6 +200,7 @@ if __name__ == '__main__':
     # Get new BMO products
     bmo_prods = driver.get_bmo_products()
     print(driver.compare_site_to_pdw('bmo', bmo_prods, recent_pdw_products_dict))
+    driver.close_driver()
     
     # # Get new NBCSS products
     # nbcss_prods = driver.get_nbcss_products()
