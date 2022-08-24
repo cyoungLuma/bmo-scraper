@@ -2,6 +2,7 @@
 import pandas as pd
 from bs4 import BeautifulSoup
 from keyring import get_password
+# import json
 from numpy import nan
 # from pymongo import MongoClient
 # from pymongo.errors import DuplicateKeyError
@@ -150,31 +151,31 @@ class BmoScraper:
         def check_call_freq(self, dt_days):
             if 2 <= dt_days <= 5:
                 self.pdw_df.at['productCall.callObservationFrequency',
-                               key] = 'BI_WEEKLY'
+                               key] = 'Bi Weekly'
             if 6 <= dt_days <= 7:
                 self.pdw_df.at['productCall.callObservationFrequency',
-                               key] = 'WEEKLY'
+                               key] = 'Weekly'
             if 28 <= dt_days <= 31:
                 self.pdw_df.at['productCall.callObservationFrequency',
-                               key] = 'MONTHLY'
+                               key] = 'Monthly'
             elif 14 <= dt_days <= 16:
                 self.pdw_df.at['productCall.callObservationFrequency',
-                               key] = 'BI_MONTHLY'
+                               key] = 'Bi Monthly'
             elif dt_days == 1:
                 self.pdw_df.at['productCall.callObservationFrequency',
-                               key] = 'DAILY'
+                               key] = 'Daily'
             elif 364 <= dt_days <= 366:
                 self.pdw_df.at['productCall.callObservationFrequency',
-                               key] = 'ANNUALLY'
+                               key] = 'Annualy'
             elif 182 <= dt_days <= 184:
                 self.pdw_df.at['productCall.callObservationFrequency',
-                               key] = 'SEMI_ANNUALLY'
+                               key] = 'Semi Annualy'
             elif 89 <= dt_days <= 92:
                 self.pdw_df.at['productCall.callObservationFrequency',
-                               key] = 'QUARTERLY'
+                               key] = 'Quarterly'
             else:
                 self.pdw_df.at['productCall.callObservationFrequency',
-                               key] = 'CUSTOM'
+                               key] = 'Custom'
 
         try:
             for key, val in self.notes_dict.items():
@@ -209,11 +210,11 @@ class BmoScraper:
                         if (autocall_series == autocall_series[0]).all():
                             # self.pdw_df.at['productCall.callType', key] = 'Autocall'
                             self.pdw_df.at['productCall.callType',
-                                           key] = 'AUTO'
+                                           key] = 'Auto'
                         else:
                             # self.pdw_df.at['productCall.callType', key] = 'Auto Step'
                             self.pdw_df.at['productCall.callType',
-                                           key] = 'AUTOCALL_STEP'
+                                           key] = 'Autocall Step'
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -408,7 +409,9 @@ class BmoScraper:
                                            self.notes_dict[key]
                                            ['Product Details']['Linked To'][0],
                                            'underlierweight':
-                                           1.0
+                                           1.0,
+                                           'underlierSource':
+                                           'Bloomberg',
                                        }]
         except Exception as e:
             template = ("An exception of type {0} occurred. "
@@ -583,16 +586,16 @@ class BmoScraper:
                         self.pdw_df.at[
                             'productYield.paymentEvaluationFrequencyFinal',
                             key] = self.notes_dict[key]['Product Details'][
-                                'Pay Frequency'][0].upper()
+                                'Pay Frequency'][0].title()
                         self.pdw_df.at[
                             'productYield.paymentFrequency',
                             key] = self.notes_dict[key]['Product Details'][
-                                'Pay Frequency'][0].upper()
+                                'Pay Frequency'][0].title()
                     elif 'Coupon Frequency' in val['Product Details'].columns:
                         self.pdw_df.at[
                             'productYield.paymentFrequency',
                             key] = self.notes_dict[key]['Product Details'][
-                                'Coupon Frequency'][0].upper()
+                                'Coupon Frequency'][0].title()
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -632,14 +635,14 @@ class BmoScraper:
                 cond2 = self.pdw_df.at['productYield.paymentFrequency',
                                        col] is not None
                 cond3 = {
-                    'ANNUALLY': 1,
-                    'BI_MONTHLY': 24,
-                    'BI_WEEKLY': 104,
-                    'DAILY': 365,
-                    'MONTHLY': 12,
-                    'QUARTERLY': 4,
-                    'SEMI_ANNUALLY': 2,
-                    'WEEKLY': 52,
+                    'Annualy': 1,
+                    'Bi Monthly': 24,
+                    'Bi Weekly': 104,
+                    'Daily': 365,
+                    'Monthly': 12,
+                    'Quarterly': 4,
+                    'Semi Annualy': 2,
+                    'Weekly': 52,
                 }
                 if cond1 and cond2:
                     self.pdw_df.at['productYield.paymentRatePerPeriodFinal',
@@ -738,7 +741,7 @@ class BmoScraper:
                         if self.pdw_df.at['productCall.callPremiumFinal',
                                           key] > 1:
                             self.pdw_df.at[
-                                'productProtection.downsideType'] = 'GEARED_BUFFER'
+                                'productProtection.downsideType'] = 'Geared Buffer'
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -934,12 +937,13 @@ class BmoScraper:
                     'productProtection',
                     'productCall',
                     'productYield',
+                    'productGrowth',
                     # 'productGeneral.wrapperType',
                 ]
                 for field in required_fields:
                     if field not in pdw_insert.keys():
                         pdw_insert[field] = {}
-                if 'wrapperType' not in pdw_insert.keys():
+                if 'wrapperType' not in pdw_insert['productGeneral'].keys():
                     pdw_insert['productGeneral']['wrapperType'] = 'Note'
 
                 # Insert into DB
