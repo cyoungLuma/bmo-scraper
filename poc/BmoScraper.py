@@ -408,7 +408,7 @@ class BmoScraper:
                                            'underlierSymbol':
                                            self.notes_dict[key]
                                            ['Product Details']['Linked To'][0],
-                                           'underlierweight':
+                                           'underlierWeight':
                                            1.0,
                                            'underlierSource':
                                            'Bloomberg',
@@ -419,8 +419,8 @@ class BmoScraper:
             message = template.format(type(e).__name__, e.args)
             self.errors_dict[(key, '_underlierList')] = (message, val)
 
-    # Rule: underlierweight
-    def _underlierweight(self):
+    # Rule: underlierWeight
+    def _underlierWeight(self):
         # Check for portfolio summary section and get weights
         for key, val in self.notes_dict.items():
             try:
@@ -428,16 +428,17 @@ class BmoScraper:
                     if 'Share Weight' in val['Portfolio Summary'].columns:
                         underlier_weight = val['Portfolio Summary'].loc[
                             val['Portfolio Summary']['Share Weight'].str.
-                            contains('%'), 'Share Weight'].str.replace(
-                                '%', '').astype(float) / 100
+                            contains('%', na=False),
+                            'Share Weight'].str.replace('%',
+                                                        '').astype(float) / 100
                         self.pdw_df.at[
-                            'productGeneral.underlierList.underlierweight',
+                            'productGeneral.underlierList.underlierWeight',
                             key] = underlier_weight.to_list()
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
                 message = template.format(type(e).__name__, e.args)
-                self.errors_dict[(key, '_underlierweight')] = (message, val)
+                self.errors_dict[(key, '_underlierWeight')] = (message, val)
 
     # Rule: upsideParticipationRateFinal
     def _upsideParticipationRateFinal(self):
@@ -566,7 +567,7 @@ class BmoScraper:
                                     r'%Y-%m-%d').to_list()
                         self.pdw_df.at['productYield.paymentDateList',
                                        key] = [{
-                                           'paymentObservationDate': val
+                                           'paymentDate': val
                                        } for val in bmo.pdw_df.at[
                                            'productYield.paymentDateList',
                                            key]]
@@ -798,6 +799,12 @@ class BmoScraper:
                                         self.notes_dict[key]['Rates Schedule']
                                         ['From (including)']).dt.strftime(
                                             r'%Y-%m-%d').to_list()
+                                self.pdw_df.at[
+                                    'productYield.paymentDateList', key] = [{
+                                        'paymentDate':
+                                        val
+                                    } for val in bmo.pdw_df.at[
+                                        'productYield.paymentDateList', key]]
 
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
@@ -827,7 +834,7 @@ class BmoScraper:
         self._tenorFinal()
         self._tenorUnit()
         self._underlierList()
-        self._underlierweight()
+        self._underlierWeight()
         self._upsideParticipationRateFinal()
         self._principalBarrierLevelFinal()
         # self._countryDistribution()
@@ -897,19 +904,19 @@ class BmoScraper:
                 # Prepare underlier list
                 if ('underlierList',
                         nan) in pdw_pre_insert['productGeneral'].keys() and (
-                            'underlierList', 'underlierweight'
+                            'underlierList', 'underlierWeight'
                         ) in pdw_pre_insert['productGeneral'].keys():
                     pdw_pre_insert['productGeneral']['underlierList'] = []
                     for sym, weight in zip(
                             pdw_pre_insert['productGeneral'][('underlierList',
                                                               nan)],
                             pdw_pre_insert['productGeneral'][(
-                                'underlierList', 'underlierweight')]):
+                                'underlierList', 'underlierWeight')]):
                         pdw_pre_insert['productGeneral'][
                             'underlierList'].append({
                                 'underlierSymbol':
                                 sym,
-                                'underlierweight':
+                                'underlierWeight':
                                 weight,
                                 'underlierSource':
                                 'Bloomberg'
@@ -917,7 +924,7 @@ class BmoScraper:
                     del pdw_pre_insert['productGeneral'][('underlierList',
                                                           nan)]
                     del pdw_pre_insert['productGeneral'][('underlierList',
-                                                          'underlierweight')]
+                                                          'underlierWeight')]
 
                 # Prepare final JSON
                 pdw_insert = {}
