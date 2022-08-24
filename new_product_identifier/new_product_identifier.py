@@ -2,9 +2,7 @@ import keyring
 import pandas as pd
 import datetime
 import time
-import pymssql
 from selenium import webdriver
-from urllib.request import urlopen
 from pymongo import MongoClient
 
 
@@ -62,7 +60,7 @@ class Driver:
         for url in urls:
             print(url)
             # Get first page
-            driver = webdriver.Chrome(chrome_path, options=op)
+            driver = self.driver
             page = driver.get(url)
             time.sleep(2)
             bmo_act_dict[0] = pd.read_html(driver.page_source)[1]
@@ -74,7 +72,6 @@ class Driver:
                     flag = 0
                 else:
                     driver.execute_script("arguments[0].click();", driver.find_element_by_id("DataTables_Table_1_next"))
-                    # driver.find_element_by_id("DataTables_Table_1_next").click()
                     time.sleep(2)
                     bmo_act_dict[num] = pd.read_html(driver.page_source)[1]
                     num += 1
@@ -93,7 +90,7 @@ class Driver:
                 elif len(str(i)) == 8:
                     listy.append('C' + str(i))
                 elif len(str(i)) == 6:
-                    listy.append('CAA' + str(i))
+                    listy.append('CAD' + str(i))
                 else:
                     listy.append('Error')
             else:
@@ -102,7 +99,6 @@ class Driver:
                 else:
                     listy.append('Error')
         all_bmo_active_products['pdwCusip'] = listy
-        print(all_bmo_active_products.head())
 
         return all_bmo_active_products
     
