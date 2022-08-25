@@ -787,10 +787,6 @@ class BmoScraper:
                                 ['AutoCall Coupon (Next Call Date)']
                                 [0].replace('-', '').replace('%', '').replace(
                                     " ", "")) / 100
-                        if self.pdw_df.at['productCall.callPremiumFinal',
-                                          key] > 1:
-                            self.pdw_df.at['productProtection.downsideType',
-                                           key] = 'Geared Buffer'
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -804,12 +800,15 @@ class BmoScraper:
                 if 'Product Details' in val.keys():
                     if 'Downside Participation' in val[
                             'Product Details'].columns:
-                        self.pdw_df.at[
-                            'productProtection.putLeverageFinal', key] = float(
-                                self.notes_dict[key]['Product Details']
-                                ['Downside Participation'][0].replace(
-                                    '-', '').replace('%', '').replace(
-                                        " ", "")) / 100
+                        value = float(self.notes_dict[key]['Product Details']
+                                      ['Downside Participation'][0].replace(
+                                          '-', '').replace('%', '').replace(
+                                              " ", "")) / 100
+                        self.pdw_df.at['productProtection.putLeverageFinal',
+                                       key] = value
+                        if value > 1:
+                            self.pdw_df.at['productProtection.downsideType',
+                                           key] = 'Geared Buffer'
 
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
