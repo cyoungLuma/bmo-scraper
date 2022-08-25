@@ -9,7 +9,7 @@ from random import sample
 from time import sleep
 from urllib.error import HTTPError
 from urllib.request import urlopen
-
+from tqdm import tqdm
 
 # %% Read in the examples
 class BmoScraper:
@@ -17,7 +17,7 @@ class BmoScraper:
     def __init__(self, bmo_urls):
         self.notes_dict = {}
         self.errors_dict = {}
-        for note in bmo_urls:
+        for note in tqdm(bmo_urls):
             try:
                 try:
                     try:
