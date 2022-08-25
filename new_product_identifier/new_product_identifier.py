@@ -195,6 +195,44 @@ class Driver:
 
         return new_desjardins_products
 
+    def get_nosco_products(self):
+        ''''''
+        # Setup for rbc
+        rbc_act_dict = {}
+        driver = self.driver
+        url = 'https://www.investorsolutions.gbm.scotiabank.com/ppn-public/home.do'
+        driver.get(url)
+        time.sleep(2)
+        tables = pd.read_html(driver.page_source)
+        nosco_ppn = tables[0]
+        nosco_at_risk = tables[1]
+        html_tables = BeautifulSoup(driver.page_source).find_all('table')
+        nosco_ppn['urls'] = [link.get('href') for link in html_tables[0].find_all('a')]
+        nosco_at_risk['urls'] = [link.get('href') for link in html_tables[1].find_all('a')]
+        new_nosco_products = pd.concat([nosco_ppn, nosco_at_risk], ignore_index=False)
+        new_nosco_products['urls'] = [
+            'https://www.investorsolutions.gbm.scotiabank.com/ppn-public/' + i for i in new_nosco_products['urls']
+        ]
+        listy = []
+        for i in new_nosco_products['Fund Code']:
+            if 'JHN' in str(i):
+                if len(str(i)) == 7:
+                    listy.append('CA' + str(i))
+                elif len(str(i)) == 8:
+                    listy.append('C' + str(i))
+                elif len(str(i)) == 6:
+                    listy.append('CAD' + str(i))
+                else:
+                    listy.append('Error')
+            else:
+                if len(str(i)) == 9:
+                    listy.append(str(i))
+                else:
+                    listy.append('Error')
+        new_nosco_products['pdwCusip'] = listy
+
+        return new_nosco_products
+
     def compare_site_to_pdw(self, site, site_prods, pdw_prods):
         ''''''
         # Filter out any products already present in pdw
@@ -206,7 +244,7 @@ class Driver:
         # Create list of product urls to return
         if site == 'bmo':
             urls = ['https://www.bmonotes.com/Note/' + i for i in new_active_products['JHN Code / Cusip']]
-        elif site in ['nbcss', 'rbc', 'desjardins']:
+        elif site in ['nbcss', 'rbc', 'desjardins', 'nosco']:
             urls = new_active_products['urls'].unique()
 
         return urls
@@ -230,12 +268,20 @@ if __name__ == '__main__':
     # # Get new NBCSS products
     # nbcss_prods = driver.get_nbcss_products()
     # print(driver.compare_site_to_pdw('nbcss', nbcss_prods, recent_pdw_products_dict))
+    # driver.close_driver()
 
     # # Get new rbc products
     # rbc_prods = driver.get_rbc_products()
     # print(driver.compare_site_to_pdw('rbc', rbc_prods, recent_pdw_products_dict))
+    # driver.close_driver()
+
+    # # Get new desjardins products
+    # des_prods = driver.get_desjardins_products()
+    # print(driver.compare_site_to_pdw('desjardins', des_prods, recent_pdw_products_dict))
+    # driver.close_driver()
 
     # Get new desjardins products
-    des_prods = driver.get_desjardins_products()
-    print(driver.compare_site_to_pdw('desjardins', des_prods, recent_pdw_products_dict))
+    nosco_prods = driver.get_nosco_products()
+    print(driver.compare_site_to_pdw('nosco', nosco_prods, recent_pdw_products_dict))
+    driver.close_driver()
     
