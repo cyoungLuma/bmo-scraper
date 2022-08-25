@@ -1,7 +1,4 @@
-from multiprocessing.connection import Client
-import requests
 import json
-import os
 from oauth_access_token import get_new_token
 from call_product_api import call_luma_product_api
 from new_product_identifier import Driver 
@@ -34,7 +31,6 @@ def run_url_crawler():
 
 # %% Write to PDW & view status
 
-
 def lambda_handler():
     # Get urls with crawler
     urls = run_url_crawler()
@@ -42,12 +38,28 @@ def lambda_handler():
     products = run_bmo_scraper(urls)
     # Generates new token
     new_access_token = get_new_token(client_credentials['client_id'], client_credentials['client_secret'])
-    product_list = []
+    product_list_success = []
+    product_list_error = []
     # Post to api
     for key in products:
         product_data = json.loads(products[key])
-        call_luma_product_api(product_data, new_access_token)
-        product_list.append(key)
-    print(product_list)
+        is_post_call_successful = call_luma_product_api(product_data, new_access_token)
+        if is_post_call_successful:
+            product_list_success.append(key)
+        else:
+            product_list_error.append(key)
+
+    print(f'{product_list_success} are succesfully posted.')
+    print(f'{product_list_error} are posted with errors.')
+
+
+
+
+
+
+
+
+
+
 
 lambda_handler()
