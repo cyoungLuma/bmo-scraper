@@ -4,6 +4,7 @@ import datetime
 import time
 from selenium import webdriver
 from pymongo import MongoClient
+from bs4 import BeautifulSoup
 
 
 class Driver:
@@ -48,19 +49,16 @@ class Driver:
         ''''''
         # Setup for bmo
         bmo_act_dict = {}
-        chrome_path = r"/opt/homebrew/bin/chromedriver"
-        op = webdriver.ChromeOptions()
-        op.add_argument('--headless')
         urls = [
             'https://www.bmonotes.com/Type/PPNs#active', 
             'https://www.bmonotes.com/Type/Fixed-Income-Notes#active', 
             'https://www.bmonotes.com/Type/NPPNs#active'
         ]
         all_bmo_active_products = pd.DataFrame()
+        driver = self.driver
         for url in urls:
             print(url)
             # Get first page
-            driver = self.driver
             page = driver.get(url)
             time.sleep(2)
             bmo_act_dict[0] = pd.read_html(driver.page_source)[1]
@@ -106,7 +104,7 @@ class Driver:
         nbcss_act_dict = {}
         # Get first page
         url = 'https://www.nbcstructuredsolutions.ca/listeProduits.aspx?mode=previous'
-        page = self.driver.get(url)
+        self.driver.get(url)
         time.sleep(2)
         nbcss_act_dict[0] = pd.read_html(self.driver.page_source)[0]
         nbcss_act_dict[0]['urls'] = [
@@ -132,13 +130,10 @@ class Driver:
     def get_rbc_products(self):
         # Setup for rbc
         rbc_act_dict = {}
-        chrome_path = r"/opt/homebrew/bin/chromedriver"
-        op = webdriver.ChromeOptions()
-        op.add_argument('--headless')
-        driver = webdriver.Chrome(chrome_path, options=op)
+        driver = self.driver
         url = 'https://www.rbcnotes.com/Products'
         # Get first page
-        page = driver.get(url)
+        driver.get(url)
         time.sleep(2)
         temp_table = pd.read_html(driver.page_source)
         temp_data = temp_table[1][(temp_table[1][7].isna()==False) & (temp_table[1][7].str.contains('Day')==False)]
@@ -170,6 +165,35 @@ class Driver:
 
         return rbc_active_products
 
+    def get_desjardins_products(self):
+        ''''''
+        # Setup for Desjardins (need new non-headless driver)
+        chrome_path = r"/opt/homebrew/bin/chromedriver"
+        op = webdriver.ChromeOptions()
+        op.add_argument('--window-size=1920,1080')
+        op.add_experimental_option( "prefs",{'profile.managed_default_content_settings.javascript': 1})
+        driver = webdriver.Chrome(chrome_path, options=op)
+        url = 'https://www.fondsdesjardins.com/structurednotes/products/index.jsp'
+        # Get non-paginated PPN page
+        driver.get(url)
+        time.sleep(2)
+        driver.execute_script("arguments[0].click();", driver.find_element_by_xpath('//*[@id="splash-page"]/div/div/div[2]/div[2]/div[3]/button'))
+        time.sleep(20)
+        html_table = BeautifulSoup(driver.page_source).find('table')
+        ppn_table = pd.read_html(driver.page_source)[0]
+        ppn_table['urls'] = [link.get('href') for link in html_table.find_all('a') if '/pdf/' not in link.get('href')]
+        driver.execute_script("arguments[0].click();", driver.find_element_by_link_text('Non-Principal Protected'))
+        time.sleep(2)
+        nppn_table = pd.read_html(driver.page_source)[1]
+        html_table = BeautifulSoup(driver.page_source).find_all('table')[1]
+        nppn_table['urls'] = [link.get('href') for link in html_table.find_all('a') if '/pdf/' not in link.get('href')]
+        new_desjardins_products = pd.concat([ppn_table, nppn_table], ignore_index=True)
+        new_desjardins_products['urls'] = ['https://www.fondsdesjardins.com' + i for i in new_desjardins_products['urls']]
+        new_desjardins_products['pdwCusip'] = [
+            'CA' + i if len(i) == 7 else 'C' + i for i in new_desjardins_products['Code']
+        ]
+
+        return new_desjardins_products
 
     def compare_site_to_pdw(self, site, site_prods, pdw_prods):
         ''''''
@@ -182,13 +206,14 @@ class Driver:
         # Create list of product urls to return
         if site == 'bmo':
             urls = ['https://www.bmonotes.com/Note/' + i for i in new_active_products['JHN Code / Cusip']]
-        elif site in ['nbcss', 'rbc']:
+        elif site in ['nbcss', 'rbc', 'desjardins']:
             urls = new_active_products['urls'].unique()
 
         return urls
 
     def close_driver(self):
         self.driver.close()
+
 
 if __name__ == '__main__':
     # Instantiate Driver
@@ -197,10 +222,10 @@ if __name__ == '__main__':
     # Get cusip and isin for all products added to pdw in the past week
     recent_pdw_products_dict = driver.get_recent_pdw_products()
     
-    # Get new BMO products
-    bmo_prods = driver.get_bmo_products()
-    print(driver.compare_site_to_pdw('bmo', bmo_prods, recent_pdw_products_dict))
-    driver.close_driver()
+    # # Get new BMO products
+    # bmo_prods = driver.get_bmo_products()
+    # print(driver.compare_site_to_pdw('bmo', bmo_prods, recent_pdw_products_dict))
+    # driver.close_driver()
     
     # # Get new NBCSS products
     # nbcss_prods = driver.get_nbcss_products()
@@ -209,4 +234,8 @@ if __name__ == '__main__':
     # # Get new rbc products
     # rbc_prods = driver.get_rbc_products()
     # print(driver.compare_site_to_pdw('rbc', rbc_prods, recent_pdw_products_dict))
+
+    # Get new desjardins products
+    des_prods = driver.get_desjardins_products()
+    print(driver.compare_site_to_pdw('desjardins', des_prods, recent_pdw_products_dict))
     
