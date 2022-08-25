@@ -25,7 +25,7 @@ class Driver:
         # Create connection string for DocDB
         user = "dbadmin"
         password = keyring.get_password('docdb_prod_dbadmin', 'dbadmin')
-        host = "production-documentdb.cluster-cb6kajicuplh.us-east-1.docdb.amazonaws.com"
+        host = "dev-documentdb.cluster-cb6kajicuplh.us-east-1.docdb.amazonaws.com"
         port = "27017"
         options = "tls=true&tlsAllowInvalidCertificates=true&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false"
         cxn_string_template= "mongodb://{}:{}@{}:{}/?{}"
@@ -33,7 +33,7 @@ class Driver:
 
         # Get past week's new products
         client = MongoClient(cxn_string_prod)
-        db = client['product-prod']
+        db = client['product-uat']
         results_ = list(db.PdwProductCore.find(
             {'createTimestamp': {'$gte': one_week_ago}}, 
             ('productGeneral.cusip', 'productGeneral.isin')
@@ -246,7 +246,7 @@ class Driver:
             urls = ['https://www.bmonotes.com/Note/' + i for i in new_active_products['JHN Code / Cusip']]
         elif site in ['nbcss', 'rbc', 'desjardins', 'nosco']:
             urls = new_active_products['urls'].unique()
-
+        print(urls)
         return urls
 
     def close_driver(self):

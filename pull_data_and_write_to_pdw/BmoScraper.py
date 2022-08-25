@@ -1062,33 +1062,33 @@ class BmoScraper:
 
 
 # %% Params
-with open('urls_to_pdw.txt') as f:
-    bmo_urls = f.read().splitlines()
-bmo_urls_sample = sample(bmo_urls, 50)
-bmo_urls_sample = [
-    'https://www.bmonotes.com/Note/JHN7482',
-    'https://www.bmonotes.com/Note/JHN15954',
-    'https://www.bmonotes.com/Note/JHN15093',
-    'https://www.bmonotes.com/Note/JHN2058',
-    'https://www.bmonotes.com/Note/JHN15992',
-    'https://www.bmonotes.com/Note/06368DEW0',
-    'https://www.bmonotes.com/Note/06368AV56',
-    'https://www.bmonotes.com/note/06368D8L1',
-]
+# with open('urls_to_pdw.txt') as f:
+#     bmo_urls = f.read().splitlines()
+# bmo_urls_sample = sample(bmo_urls, 50)
+# bmo_urls_sample = [
+#     'https://www.bmonotes.com/Note/JHN7482',
+#     'https://www.bmonotes.com/Note/JHN15954',
+#     'https://www.bmonotes.com/Note/JHN15093',
+#     'https://www.bmonotes.com/Note/JHN2058',
+#     'https://www.bmonotes.com/Note/JHN15992',
+#     'https://www.bmonotes.com/Note/06368DEW0',
+#     'https://www.bmonotes.com/Note/06368AV56',
+#     'https://www.bmonotes.com/note/06368D8L1',
+# ]
 
-# %% Add params to object
-bmo = BmoScraper(bmo_urls_sample)
+# # %% Add params to object
+# bmo = BmoScraper(bmo_urls_sample)
 
-# %% Run all rules
-bmo.run_all_rules()
+# # %% Run all rules
+# bmo.run_all_rules()
 
-# %% View Final results
-pd.set_option('display.max_rows', 200)
-bmo.pdw_df
+# # %% View Final results
+# pd.set_option('display.max_rows', 200)
+# bmo.pdw_df
 
-# %% Write to PDW & view status
-bmo.output_jsons()
-bmo.result
+# # %% Write to PDW & view status
+# bmo.output_jsons()
+# bmo.result
 
-# %% View errors
-bmo.errors_dict
+# # %% View errors
+# bmo.errors_dict

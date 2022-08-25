@@ -5,7 +5,7 @@ import sys
 
 def get_new_token(client_id, client_secret):
     """get new Oauth token, currently using PI's secrets"""
-    auth_server_url = 'https://bdev.lumafintech.com/api/auth-service/oauth/token'
+    auth_server_url = 'https://buat.lumafintech.com/api/auth-service/oauth/token'
 
     token_req_payload = {'grant_type': 'client_credentials', 'scope': 'serverclient'}
 
