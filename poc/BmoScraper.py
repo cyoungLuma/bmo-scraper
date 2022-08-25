@@ -2,8 +2,10 @@
 import json
 import pandas as pd
 from bs4 import BeautifulSoup
+# from func_timeout import func_set_timeout
+# from func_timeout import FunctionTimedOut
 from numpy import nan
-# from random import sample
+from random import sample
 from time import sleep
 from urllib.error import HTTPError
 from urllib.request import urlopen
@@ -47,6 +49,7 @@ class BmoScraper:
             ['Payment Schedule', 'Portfolio Summary', 'Rates Schedule'])
 
     # Get all scraping results as a single row table
+    # @func_set_timeout(10)
     def transpose_set_header(self):
 
         # Additional fxn to recycle code
@@ -56,33 +59,59 @@ class BmoScraper:
 
         # This checks if the scrape results are a true table or not
         for key, val in self.notes_dict.items():
-            for i in range(len(val)):
-                if ~self.skip_cols.isin(self.notes_dict[key][i].columns).any():
-                    self.notes_dict[key][i] = self.notes_dict[key][i].T
-                    reassign_cols_truncate(self, key, i)
-                else:
-                    table_name = self.notes_dict[key][i].columns[0]
-                    reassign_cols_truncate(self, key, i)
-                    self.notes_dict[key][i].columns.name = table_name
+            try:
+                for i in range(len(val)):
+                    if ~self.skip_cols.isin(
+                            self.notes_dict[key][i].columns).any():
+                        self.notes_dict[key][i] = self.notes_dict[key][i].T
+                        reassign_cols_truncate(self, key, i)
+                    else:
+                        table_name = self.notes_dict[key][i].columns[0]
+                        reassign_cols_truncate(self, key, i)
+                        self.notes_dict[key][i].columns.name = table_name
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, 'transpose_set_header')] = (message,
+                                                                   val)
 
     # Convert all to dict to navigate indices
     def label_note_tables(self):
-        self.notes_dict = {
-            key: {val[i].columns.name: val[i]
-                  for i in range(len(val))}
-            for key, val in self.notes_dict.items()
-        }
+        try:
+            self.notes_dict = {
+                key: {val[i].columns.name: val[i]
+                      for i in range(len(val))}
+                for key, val in self.notes_dict.items()
+            }
+        except Exception as e:
+            template = ("An exception of type {0} occurred. "
+                        "Arguments:\n{1!r}")
+            message = template.format(type(e).__name__, e.args)
+            self.errors_dict['label_note_tables'] = message
 
     # Set PDW index
     def set_pdw_index(self):
-        self.pdw_df.set_index('PDW Fields', inplace=True)
+        try:
+            self.pdw_df.set_index('PDW Fields', inplace=True)
+        except Exception as e:
+            template = ("An exception of type {0} occurred. "
+                        "Arguments:\n{1!r}")
+            message = template.format(type(e).__name__, e.args)
+            self.errors_dict['set_pdw_index'] = message
 
     # Rule: PDW Name
     def _PDW_Name(self):
         for key in self.notes_dict.keys():
-            self.pdw_df[key] = None
-            self.pdw_df.at['PDW Name',
-                           key] = 'https://www.bmonotes.com/Note/' + key
+            try:
+                self.pdw_df[key] = None
+                self.pdw_df.at['PDW Name',
+                               key] = 'https://www.bmonotes.com/Note/' + key
+            except Exception as e:
+                template = ("An exception of type {0} occurred. "
+                            "Arguments:\n{1!r}")
+                message = template.format(type(e).__name__, e.args)
+                self.errors_dict[(key, 'transpose_set_header')] = message
 
     # Rule: callBarrierLevelFinal
     def _callBarrierLevelFinal(self):
@@ -187,10 +216,19 @@ class BmoScraper:
                         check_call_freq(self, dt_days)
                 elif 'Product Details' in val.keys():
                     if 'Extension Frequency' in val['Product Details'].columns:
-                        self.pdw_df.at[
-                            'productCall.callObservationFrequency',
-                            key] = self.notes_dict[key]['Product Details'][
-                                'Extension Frequency'][0]
+                        value = self.notes_dict[key]['Product Details'][
+                            'Extension Frequency'][0]
+                        value_dict = {
+                            'Semi-Annual': 'Semi-Annually',
+                            'Annual': 'Annually',
+                            'Quarter': 'Quarterly',
+                            'Month': 'Monthly',
+                            'Bi-Month': 'Bi-Monthly',
+                            'Week': 'Weekly',
+                            'Day': 'Daily',
+                        }
+                        self.pdw_df.at['productCall.callObservationFrequency',
+                                       key] = value_dict[value]
                         self.pdw_df.at['productCall.callType', key] = 'Issuer'
         except Exception as e:
             template = ("An exception of type {0} occurred. "
@@ -638,10 +676,19 @@ class BmoScraper:
                         if isinstance(
                                 val['Product Details']['Coupon Frequency'][0],
                                 str):
-                            self.pdw_df.at[
-                                'productYield.paymentFrequency',
-                                key] = self.notes_dict[key]['Product Details'][
-                                    'Coupon Frequency'][0].title()
+                            value_dict = {
+                                'Semi-Annual': 'Semi-Annually',
+                                'Annual': 'Annually',
+                                'Quarter': 'Quarterly',
+                                'Month': 'Monthly',
+                                'Bi-Month': 'Bi-Monthly',
+                                'Week': 'Weekly',
+                                'Day': 'Daily',
+                            }
+                            value = self.notes_dict[key]['Product Details'][
+                                'Coupon Frequency'][0].title()
+                            self.pdw_df.at['productYield.paymentFrequency',
+                                           key] = value_dict[value]
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -1015,9 +1062,9 @@ class BmoScraper:
 
 
 # %% Params
-# with open('urls_to_pdw.txt') as f:
-#     bmo_urls = f.read().splitlines()
-# bmo_urls_sample = sample(bmo_urls, 50)
+with open('urls_to_pdw.txt') as f:
+    bmo_urls = f.read().splitlines()
+bmo_urls_sample = sample(bmo_urls, 50)
 bmo_urls_sample = [
     'https://www.bmonotes.com/Note/JHN7482',
     'https://www.bmonotes.com/Note/JHN15954',
@@ -1026,6 +1073,7 @@ bmo_urls_sample = [
     'https://www.bmonotes.com/Note/JHN15992',
     'https://www.bmonotes.com/Note/06368DEW0',
     'https://www.bmonotes.com/Note/06368AV56',
+    'https://www.bmonotes.com/note/06368D8L1',
 ]
 
 # %% Add params to object
@@ -1042,5 +1090,5 @@ bmo.pdw_df
 bmo.output_jsons()
 bmo.result
 
-# %% View any errors that were caught
+# %% View errors
 bmo.errors_dict
