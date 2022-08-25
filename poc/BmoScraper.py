@@ -191,6 +191,7 @@ class BmoScraper:
                             'productCall.callObservationFrequency',
                             key] = self.notes_dict[key]['Product Details'][
                                 'Extension Frequency'][0]
+                        self.pdw_df.at['productCall.callType', key] = 'Issuer'
         except Exception as e:
             template = ("An exception of type {0} occurred. "
                         "Arguments:\n{1!r}")
@@ -210,7 +211,7 @@ class BmoScraper:
                             key]['Payment Schedule']['Autocall Level'].dropna(
                             ).reset_index(drop=True)
                         if (autocall_series == autocall_series.values[0]
-                            ).all():
+                            ).all():  # noqa
                             self.pdw_df.at['productCall.callType',
                                            key] = 'Auto'
                         else:
@@ -261,7 +262,25 @@ class BmoScraper:
 
     # Rule: cusip
     def _cusip(self):
-        # Check if right type of note
+
+        def get_isin_from_cusip(cusip_str):
+            country_code = 'CA'
+            isin_to_digest = country_code + cusip_str.upper()
+
+            get_numerical_code = lambda c: str(ord(c) - 55)  # noqa
+            encode_letters = lambda c: c if c.isdigit(  # noqa
+            ) else get_numerical_code(c)
+            to_digest = ''.join(map(encode_letters, isin_to_digest))
+
+            ints = [int(s) for s in to_digest[::-1]]
+            every_second_doubled = [x * 2 for x in ints[::2]] + ints[1::2]
+
+            sum_digits = lambda i: sum(divmod(i, 10))  # noqa
+            digit_sum = sum([sum_digits(i) for i in every_second_doubled])
+
+            check_digit = (10 - digit_sum % 10) % 10
+            return isin_to_digest + str(check_digit)
+
         for key, val in self.notes_dict.items():
             try:
                 # Get JHN column and correct length
@@ -270,6 +289,9 @@ class BmoScraper:
                         self.pdw_df.at['productGeneral.cusip',
                                        key] = self.notes_dict[key][
                                            'Product Details']['Cusip'][0]
+                        self.pdw_df.at[
+                            'productGeneral.isin', key] = get_isin_from_cusip(
+                                self.pdw_df.at['productGeneral.cusip', key])
                     elif 'JHN Code' in val['Product Details'].columns:
                         jhn = self.notes_dict[key]['Product Details'][
                             'JHN Code'][0]
@@ -281,6 +303,12 @@ class BmoScraper:
                                            key] = 'C' + jhn
                         else:
                             self.pdw_df.at['productGeneral.cusip', key] = jhn
+                            self.pdw_df.at['productGeneral.isin',
+                                           key] = get_isin_from_cusip(
+                                               self.pdw_df.at[
+                                                   'productGeneral.cusip',
+                                                   key])
+
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -334,13 +362,24 @@ class BmoScraper:
     def _productName(self):
         # Get title of webpages
         try:
-            for key in self.notes_dict.keys():
+            for key, val in self.notes_dict.items():
                 soup = BeautifulSoup(urlopen('https://www.bmonotes.com/Note/' +
                                              key),
                                      features="lxml")
-                self.pdw_df.at['productGeneral.productName',
-                               key] = str(soup.find_all('h1')[1]).replace(
-                                   r'<h1>', '').replace(r'</h1>', '').strip()
+                page_title = str(soup.find_all('h1')[1]).replace(
+                    r'<h1>', '').replace(r'</h1>', '').strip()
+                self.pdw_df.at['productGeneral.productName', key] = page_title
+                if 'Principal Protected' in page_title:
+                    self.pdw_df.at['productGeneral.registrationType',
+                                   key] = 'PPN'
+                elif 'Description' in val.keys():
+                    if 'principal protection' in val['Description'].columns[
+                            0].lower():
+                        self.pdw_df.at['productGeneral.registrationType',
+                                       key] = 'PPN'
+                else:
+                    self.pdw_df.at['productGeneral.registrationType',
+                                   key] = 'PAR'
         except Exception as e:
             template = ("An exception of type {0} occurred. "
                         "Arguments:\n{1!r}")
@@ -689,7 +728,8 @@ class BmoScraper:
             try:
                 if 'Current Status' in val.keys():
                     if 'Current Bid Price' in val['Current Status'].columns:
-                        if val['Current Status']['Current Bid Price'][0] != '-':
+                        if val['Current Status']['Current Bid Price'][
+                                0] != '-':  # noqa
                             self.pdw_df.at[
                                 'Mark to Market Price', key] = float(
                                     self.notes_dict[key]['Current Status']
@@ -747,10 +787,6 @@ class BmoScraper:
                                 ['AutoCall Coupon (Next Call Date)']
                                 [0].replace('-', '').replace('%', '').replace(
                                     " ", "")) / 100
-                        if self.pdw_df.at['productCall.callPremiumFinal',
-                                          key] > 1:
-                            self.pdw_df.at['productProtection.downsideType',
-                                           key] = 'Geared Buffer'
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
                             "Arguments:\n{1!r}")
@@ -764,12 +800,15 @@ class BmoScraper:
                 if 'Product Details' in val.keys():
                     if 'Downside Participation' in val[
                             'Product Details'].columns:
-                        self.pdw_df.at[
-                            'productProtection.putLeverageFinal', key] = float(
-                                self.notes_dict[key]['Product Details']
-                                ['Downside Participation'][0].replace(
-                                    '-', '').replace('%', '').replace(
-                                        " ", "")) / 100
+                        value = float(self.notes_dict[key]['Product Details']
+                                      ['Downside Participation'][0].replace(
+                                          '-', '').replace('%', '').replace(
+                                              " ", "")) / 100
+                        self.pdw_df.at['productProtection.putLeverageFinal',
+                                       key] = value
+                        if value > 1:
+                            self.pdw_df.at['productProtection.downsideType',
+                                           key] = 'Geared Buffer'
 
             except Exception as e:
                 template = ("An exception of type {0} occurred. "
@@ -788,7 +827,7 @@ class BmoScraper:
                                 0] != 'Extendible Step-up Note':
                             if (val['Rates Schedule']['Rate/Coupon'] ==
                                     val['Rates Schedule']
-                                ['Rate/Coupon'].values[0]).all():
+                                ['Rate/Coupon'].values[0]).all():  # noqa
                                 rate_coupon_val = self.notes_dict[key][
                                     'Rates Schedule']['Rate/Coupon'].values[
                                         0].replace('%', '').replace(" ", "")
@@ -986,6 +1025,7 @@ bmo_urls_sample = [
     'https://www.bmonotes.com/Note/JHN2058',
     'https://www.bmonotes.com/Note/JHN15992',
     'https://www.bmonotes.com/Note/06368DEW0',
+    'https://www.bmonotes.com/Note/06368AV56',
 ]
 
 # %% Add params to object
