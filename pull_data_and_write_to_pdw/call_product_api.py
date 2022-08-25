@@ -7,7 +7,7 @@ import json
 def call_luma_product_api(products, new_access_token):
     """Post new product to pdw api, out of scope for PI's client credentials."""
     print("Inside call_luma_product_api")
-    url = "https://scg.bdev.lumafintech.com/api/pdw-service/v2/products/"
+    url = "https://scg.buat.lumafintech.com/api/pdw-service/v2/products/"
 
     payload = json.dumps(products)
     headers = {

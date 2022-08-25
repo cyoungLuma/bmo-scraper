@@ -2,33 +2,24 @@
 import json
 import pandas as pd
 from bs4 import BeautifulSoup
-# from keyring import get_password
 from numpy import nan
-# from pymongo import MongoClient
-# from pymongo.errors import DuplicateKeyError
-# from random import sample
 from time import sleep
 from urllib.error import HTTPError
 from urllib.request import urlopen
-
+from tqdm import tqdm
 
 # %% Read in the examples
+
+
 class BmoScraper:
     # Pass in note URLs & lookup for PDW
     def __init__(
         self,
         bmo_urls,
-        # user,
-        # password,
-        # host,
-        # port,
-        # options,
     ):
-        # cxn_string = f"mongodb://{user}:{password}@{host}:{port}/?{options}"
-        # self.client = MongoClient(cxn_string)
         self.notes_dict = {}
         self.errors_dict = {}
-        for note in bmo_urls:
+        for note in tqdm(bmo_urls):
             try:
                 try:
                     try:
@@ -983,38 +974,28 @@ class BmoScraper:
         self.gen_pdw_json()
 
 
-# %% Params
-# with open('urls_to_pdw.txt') as f:
-#     bmo_urls = f.read().splitlines()
-# bmo_urls_sample = sample(bmo_urls, 50)
-bmo_urls_sample = [
-    'https://www.bmonotes.com/Note/JHN7482',
-    'https://www.bmonotes.com/Note/JHN15954',
-    'https://www.bmonotes.com/Note/JHN15093',
-    'https://www.bmonotes.com/Note/JHN2058',
-    'https://www.bmonotes.com/Note/JHN15992',
-]
-# user = 'skimble'
-# password = get_password('docdb_preprod', user)
-# host = "dev-documentdb.cluster-cb6kajicuplh.us-east-1.docdb.amazonaws.com"
-# port = "27017"
-# options = ("tls=true&tlsAllowInvalidCertificates=true&replicaSet=rs0&"
-#            "readPreference=secondaryPreferred&retryWrites=false")
+# # %% Params
+# bmo_urls_sample = [
+#     'https://www.bmonotes.com/Note/JHN7482',
+#     'https://www.bmonotes.com/Note/JHN15954',
+#     'https://www.bmonotes.com/Note/JHN15093',
+#     'https://www.bmonotes.com/Note/JHN2058',
+#     'https://www.bmonotes.com/Note/JHN15992',
+# ]
 
-# %% Add params to object
-# bmo = BmoScraper(bmo_urls_sample, user, password, host, port, options)
-bmo = BmoScraper(bmo_urls_sample)
+# bmo = BmoScraper(bmo_urls_sample)
 
-# %% Run all rules
-bmo.run_all_rules()
+# # %% Run all rules
+# bmo.run_all_rules()
 
-# %% View Final results
-pd.set_option('display.max_rows', 200)
-bmo.pdw_df
+# # %% View Final results
+# pd.set_option('display.max_rows', 200)
+# bmo.pdw_df
 
-# %% Write to PDW & view status
-bmo.output_jsons()
-bmo.result
+# # %% Write to PDW & view status
+# bmo.output_jsons()
 
-# %% View any errors that were caught
-bmo.errors_dict
+
+# # %% View any errors that were caught
+# bmo.errors_dict
+

@@ -12,13 +12,12 @@ $ pip install -r requirements.txt
 
 ### Usage
 #### Scraping script:
-In the poc folder, either run the BmoScraper.py script as an executable, or interactively run BmoScraper.ipynb to view the results step by step.
+In the poc folder interactively run BmoScraper.ipynb to view the results step by step.
 
 #### Get OAuth token and post new product
 
-In the lambdas_write_to_pdw/lambda_function.py file, change client id and client secret. <br />
-In the lambdas_write_to_pdw/product.json file, change the product isin so you won't get duplicates error. <br />
-Run lambdas_write_to_pdw/lambda_function.py file<br />
+In the pull_data_and_write_to_pdw/lambda_function.py file, change client id and client secret. <br />
+Run pull_data_and_write_to_pdw/lambda_function.py file<br />
 
 
 
